@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: 'Nasra Santos Football Academy',
   description: 'Official website of Nasra Santos Football Academy in Nairobi, Kenya',
   verification: {
-    google: 'mcZb-JmDySPXeu',
+    google: 'mcZb-JmDySPXeuRZJyZlwZ9YoQObUtY8FAd3E7dBuZU',
   },
 };
 
