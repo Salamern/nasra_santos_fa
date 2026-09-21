@@ -11,9 +11,7 @@ export default function Navbar() {
     setMenuOpen(false);
   };
 
-  const scrollToContact = (
-    e: React.MouseEvent<HTMLAnchorElement>
-  ) => {
+  const scrollToContact = (e: React.MouseEvent<HTMLAnchorElement>) => {
     setMenuOpen(false);
 
     if (window.location.pathname === "/") {
@@ -33,24 +31,22 @@ export default function Navbar() {
     <header className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white shadow-sm">
 
       {/* MAIN NAVBAR */}
-      <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex h-20 max-w-7xl items-center justify-between px-5 lg:px-8">
 
-        {/* LOGO + ACADEMY NAME */}
+        {/* LOGO */}
         <Link
           href="/"
           onClick={closeMenu}
           className="flex items-center gap-3"
         >
-          <div className="relative h-14 w-14 flex-shrink-0">
-            <Image
-              src="/logo.png"
-              alt="Nasra Santos Football Academy Logo"
-              fill
-              sizes="56px"
-              className="object-contain"
-              priority
-            />
-          </div>
+          <Image
+            src="/logo.png"
+            alt="Nasra Santos Football Academy Logo"
+            width={52}
+            height={52}
+            className="h-12 w-auto object-contain"
+            priority
+          />
 
           <div className="flex flex-col">
             <span className="text-lg font-black leading-none tracking-tight text-blue-950">
@@ -65,37 +61,38 @@ export default function Navbar() {
 
         {/* DESKTOP NAVIGATION */}
         <nav className="hidden items-center gap-6 text-sm font-bold text-slate-700 lg:flex">
+
           <Link
             href="/"
-            className="transition-colors hover:text-sky-500"
+            className="transition hover:text-sky-500"
           >
             Home
           </Link>
 
           <Link
             href="/about"
-            className="transition-colors hover:text-sky-500"
+            className="transition hover:text-sky-500"
           >
             About
           </Link>
 
           <Link
             href="/teams"
-            className="transition-colors hover:text-sky-500"
+            className="transition hover:text-sky-500"
           >
             Teams
           </Link>
 
           <Link
             href="/fixtures"
-            className="transition-colors hover:text-sky-500"
+            className="transition hover:text-sky-500"
           >
             Fixtures & Results
           </Link>
 
           <Link
             href="/registration"
-            className="transition-colors hover:text-sky-500"
+            className="transition hover:text-sky-500"
           >
             Register
           </Link>
@@ -103,17 +100,18 @@ export default function Navbar() {
           <Link
             href="/#contact"
             onClick={scrollToContact}
-            className="transition-colors hover:text-sky-500"
+            className="transition hover:text-sky-500"
           >
             Contact
           </Link>
+
         </nav>
 
         {/* DESKTOP REGISTER BUTTON */}
         <div className="hidden lg:block">
           <Link
             href="/registration"
-            className="rounded-full bg-blue-950 px-6 py-3 text-xs font-black uppercase tracking-wider text-white transition hover:bg-sky-400 hover:text-blue-950"
+            className="rounded-full bg-blue-950 px-6 py-3 text-xs font-black uppercase tracking-wider text-white transition hover:bg-sky-500 hover:text-blue-950"
           >
             Register Now
           </Link>
@@ -123,14 +121,12 @@ export default function Navbar() {
         <button
           type="button"
           onClick={() => setMenuOpen(!menuOpen)}
-          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg border border-slate-200 text-blue-950 lg:hidden"
+          className="flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 text-blue-950 lg:hidden"
           aria-label="Toggle navigation menu"
           aria-expanded={menuOpen}
         >
           {menuOpen ? (
-            <span className="text-3xl font-light leading-none">
-              ×
-            </span>
+            <span className="text-2xl font-bold">×</span>
           ) : (
             <div className="space-y-1.5">
               <span className="block h-0.5 w-6 bg-blue-950"></span>
@@ -142,15 +138,16 @@ export default function Navbar() {
 
       </div>
 
-      {/* MOBILE MENU */}
+      {/* MOBILE NAVIGATION */}
       {menuOpen && (
-        <div className="border-t border-slate-200 bg-white lg:hidden">
-          <nav className="mx-auto flex max-w-7xl flex-col px-5 pb-6 pt-2">
+        <div className="border-t border-slate-200 bg-white px-5 pb-6 pt-4 lg:hidden">
+
+          <nav className="mx-auto flex max-w-7xl flex-col">
 
             <Link
               href="/"
               onClick={closeMenu}
-              className="border-b border-slate-100 py-4 font-bold text-slate-700 transition hover:text-sky-500"
+              className="border-b border-slate-100 py-4 font-bold text-slate-700"
             >
               Home
             </Link>
@@ -158,7 +155,7 @@ export default function Navbar() {
             <Link
               href="/about"
               onClick={closeMenu}
-              className="border-b border-slate-100 py-4 font-bold text-slate-700 transition hover:text-sky-500"
+              className="border-b border-slate-100 py-4 font-bold text-slate-700"
             >
               About
             </Link>
@@ -166,7 +163,7 @@ export default function Navbar() {
             <Link
               href="/teams"
               onClick={closeMenu}
-              className="border-b border-slate-100 py-4 font-bold text-slate-700 transition hover:text-sky-500"
+              className="border-b border-slate-100 py-4 font-bold text-slate-700"
             >
               Teams
             </Link>
@@ -174,7 +171,7 @@ export default function Navbar() {
             <Link
               href="/fixtures"
               onClick={closeMenu}
-              className="border-b border-slate-100 py-4 font-bold text-slate-700 transition hover:text-sky-500"
+              className="border-b border-slate-100 py-4 font-bold text-slate-700"
             >
               Fixtures & Results
             </Link>
@@ -182,7 +179,7 @@ export default function Navbar() {
             <Link
               href="/registration"
               onClick={closeMenu}
-              className="border-b border-slate-100 py-4 font-bold text-slate-700 transition hover:text-sky-500"
+              className="border-b border-slate-100 py-4 font-bold text-slate-700"
             >
               Registration
             </Link>
@@ -190,7 +187,7 @@ export default function Navbar() {
             <Link
               href="/#contact"
               onClick={scrollToContact}
-              className="py-4 font-bold text-slate-700 transition hover:text-sky-500"
+              className="py-4 font-bold text-slate-700"
             >
               Contact
             </Link>
@@ -198,12 +195,13 @@ export default function Navbar() {
             <Link
               href="/registration"
               onClick={closeMenu}
-              className="mt-3 rounded-xl bg-blue-950 px-6 py-4 text-center text-sm font-black uppercase tracking-wider text-white transition hover:bg-sky-400 hover:text-blue-950"
+              className="mt-4 rounded-xl bg-blue-950 px-6 py-4 text-center text-sm font-black uppercase tracking-wider text-white"
             >
               Register Now
             </Link>
 
           </nav>
+
         </div>
       )}
 
