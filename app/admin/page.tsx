@@ -1,68 +1,164 @@
-'use client';
+import Link from "next/link";
+import LogoutButton from "./logout-button";
 
-import Link from 'next/link';
-
-export default function AdminDashboard() {
+export default function AdminPage() {
   return (
-    <div className="min-h-screen bg-slate-100 p-8">
-      <div className="max-w-6xl mx-auto">
-        
-        {/* Header */}
-        <div className="flex justify-between items-center mb-8 border-b pb-4 bg-white p-6 rounded-lg shadow-sm">
-          <div>
-            <h1 className="text-2xl font-black text-blue-900">NASRA SANTOS ADMIN CONTROL</h1>
-            <p className="text-sm text-slate-500">Manage your website content and academy registrations</p>
+    <main className="min-h-screen bg-slate-100 px-5 py-10">
+      <div className="mx-auto max-w-6xl">
+        {/* Admin Header */}
+        <div className="rounded-3xl bg-blue-950 p-8 text-white shadow-lg md:p-10">
+          <div className="flex flex-col gap-6 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="text-sm font-black uppercase tracking-[0.25em] text-sky-400">
+                Nasra Santos FA
+              </p>
+
+              <h1 className="mt-3 text-3xl font-black uppercase md:text-5xl">
+                Admin Dashboard
+              </h1>
+
+              <p className="mt-4 max-w-2xl leading-7 text-slate-300">
+                Manage academy registrations, fixtures, results and website
+                information from one place.
+              </p>
+            </div>
+
+            <LogoutButton />
           </div>
-          <Link href="/" className="text-sm text-blue-600 font-semibold hover:underline">
-            ← Back to Website
+
+          <Link
+            href="/"
+            className="mt-7 inline-block rounded-full border border-sky-400 px-6 py-3 text-sm font-black uppercase text-sky-300 transition hover:bg-sky-400 hover:text-blue-950"
+          >
+            ← Back To Website
           </Link>
         </div>
 
-        {/* Dashboard Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          
-          {/* Card 1: Registrations */}
-          <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
-            <h2 className="text-lg font-bold text-slate-800 mb-2">📝 Registrations</h2>
-            <p className="text-sm text-slate-600 mb-4">View player applications and approve or reject candidates.</p>
-            <span className="inline-block bg-yellow-100 text-yellow-800 text-xs px-2.5 py-1 rounded-full font-bold mb-4">
-              2 Pending
-            </span>
-            <Link 
-              href="/admin/registrations" 
-              className="block w-full text-center bg-blue-700 text-white py-2 text-sm font-bold rounded hover:bg-blue-800 transition-colors"
-            >
-              Manage Registrations
-            </Link>
+        {/* Admin Cards */}
+        <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {/* Registrations */}
+          <div className="rounded-3xl bg-white p-7 shadow-sm">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-xl">
+              📝
+            </div>
+
+            <h2 className="mt-5 text-xl font-black uppercase text-blue-950">
+              Registrations
+            </h2>
+
+            <p className="mt-3 min-h-14 text-sm leading-6 text-slate-600">
+              View new player applications, check payment information and
+              manage registration status.
+            </p>
+
+            <div className="mt-6 rounded-2xl bg-amber-50 p-4">
+              <p className="text-xs font-black uppercase tracking-wider text-amber-700">
+                Coming Next
+              </p>
+
+              <p className="mt-1 text-sm text-amber-900">
+                Registration management
+              </p>
+            </div>
           </div>
 
-          {/* Card 2: Fixtures & Results */}
-          <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
-            <h2 className="text-lg font-bold text-slate-800 mb-2">⚽ Fixtures & Results</h2>
-            <p className="text-sm text-slate-600 mb-4">Add new match schedules or update match scores.</p>
-            <Link 
-              href="/admin/fixtures" 
-              className="block w-full text-center bg-blue-700 text-white py-2 text-sm font-bold rounded hover:bg-blue-800 transition-colors"
-            >
-              Update Scores
-            </Link>
+          {/* Fixtures */}
+          <div className="rounded-3xl bg-white p-7 shadow-sm">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-xl">
+              ⚽
+            </div>
+
+            <h2 className="mt-5 text-xl font-black uppercase text-blue-950">
+              Fixtures & Results
+            </h2>
+
+            <p className="mt-3 min-h-14 text-sm leading-6 text-slate-600">
+              Add upcoming matches and update results that will later appear
+              automatically on the public website.
+            </p>
+
+            <div className="mt-6 rounded-2xl bg-slate-100 p-4">
+              <p className="text-xs font-black uppercase tracking-wider text-slate-500">
+                Planned
+              </p>
+
+              <p className="mt-1 text-sm text-slate-700">
+                Match management
+              </p>
+            </div>
           </div>
 
-          {/* Card 3: Site Content */}
-          <div className="bg-white p-6 rounded-lg shadow-sm border border-slate-200">
-            <h2 className="text-lg font-bold text-slate-800 mb-2">⚙️ Page Content</h2>
-            <p className="text-sm text-slate-600 mb-4">Change text/photos on Home, About, and Contact pages.</p>
-            <Link 
-              href="/admin/content" 
-              className="block w-full text-center bg-blue-700 text-white py-2 text-sm font-bold rounded hover:bg-blue-800 transition-colors"
-            >
-              Edit Pages
-            </Link>
-          </div>
+          {/* Website Content */}
+          <div className="rounded-3xl bg-white p-7 shadow-sm">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-xl">
+              🌐
+            </div>
 
+            <h2 className="mt-5 text-xl font-black uppercase text-blue-950">
+              Website Content
+            </h2>
+
+            <p className="mt-3 min-h-14 text-sm leading-6 text-slate-600">
+              Later we can manage selected academy information and website
+              content without editing source code.
+            </p>
+
+            <div className="mt-6 rounded-2xl bg-slate-100 p-4">
+              <p className="text-xs font-black uppercase tracking-wider text-slate-500">
+                Planned
+              </p>
+
+              <p className="mt-1 text-sm text-slate-700">
+                Content management
+              </p>
+            </div>
+          </div>
         </div>
 
+        {/* Development Roadmap */}
+        <div className="mt-8 rounded-3xl border border-slate-200 bg-white p-7 md:p-9">
+          <p className="text-xs font-black uppercase tracking-widest text-sky-500">
+            Admin Development
+          </p>
+
+          <h2 className="mt-2 text-2xl font-black uppercase text-blue-950">
+            What We&apos;re Building
+          </h2>
+
+          <div className="mt-6 grid gap-4 md:grid-cols-4">
+            <div className="rounded-2xl bg-green-50 p-5">
+              <p className="font-black text-green-600">01</p>
+              <p className="mt-2 text-sm font-black text-blue-950">
+                Secure Admin Login
+              </p>
+              <p className="mt-2 text-xs font-bold uppercase text-green-600">
+                Active
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 p-5">
+              <p className="font-black text-sky-500">02</p>
+              <p className="mt-2 text-sm font-black text-blue-950">
+                Registration Database
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 p-5">
+              <p className="font-black text-sky-500">03</p>
+              <p className="mt-2 text-sm font-black text-blue-950">
+                Registration Management
+              </p>
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 p-5">
+              <p className="font-black text-sky-500">04</p>
+              <p className="mt-2 text-sm font-black text-blue-950">
+                Fixtures & Content
+              </p>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
+    </main>
   );
 }
