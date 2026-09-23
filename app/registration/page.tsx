@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
+import { FormEvent, useState } from "react";
 
 const TOTAL_FEE = 6500;
 const PAYMENT_NUMBER = "0746360438";
@@ -20,874 +20,510 @@ type FormData = {
   emergencyPhone: string;
   allergies: string;
   medicalConditions: string;
+  mpesaCode: string;
+};
+
+const initialFormData: FormData = {
+  fullName: "",
+  dob: "",
+  gender: "",
+  nationality: "",
+  category: "",
+  position: "",
+  address: "",
+  phone: "",
+  emergencyName: "",
+  emergencyRelation: "",
+  emergencyPhone: "",
+  allergies: "",
+  medicalConditions: "",
+  mpesaCode: "",
 };
 
 export default function RegistrationPage() {
-  const [agreed, setAgreed] = useState(false);
-  const [mpesaCode, setMpesaCode] = useState("");
-  const [codeAttached, setCodeAttached] = useState(false);
+  const [formData, setFormData] = useState<FormData>(initialFormData);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false);
+  const [registrationId, setRegistrationId] = useState("");
 
-  const [formData, setFormData] = useState<FormData>({
-    fullName: "",
-    dob: "",
-    gender: "",
-    nationality: "Kenyan",
-    category: "",
-    position: "",
-    address: "",
-    phone: "",
-    emergencyName: "",
-    emergencyRelation: "",
-    emergencyPhone: "",
-    allergies: "",
-    medicalConditions: "",
-  });
-
-  const handleInputChange = (
-    e: React.ChangeEvent<
-      HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement
-    >
-  ) => {
-    const { name, value } = e.target;
-
-    setFormData((prev) => ({
-      ...prev,
-      [name]: value,
+  function updateField(field: keyof FormData, value: string) {
+    setFormData((previous) => ({
+      ...previous,
+      [field]: value,
     }));
-  };
+  }
 
-  const handleAttachCode = () => {
-    const cleanedCode = mpesaCode.trim().toUpperCase();
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
 
-    if (cleanedCode.length < 8) {
-      alert("Please enter a valid M-Pesa transaction code.");
-      return;
+    setSubmitting(true);
+    setError("");
+
+    try {
+      const response = await fetch("/api/registrations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(formData),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result.error || "Unable to submit registration. Please try again."
+        );
+      }
+
+      setRegistrationId(result.registration?.id || "");
+      setSubmitted(true);
+
+      window.scrollTo({
+        top: 0,
+        behavior: "smooth",
+      });
+    } catch (error) {
+      if (error instanceof Error) {
+        setError(error.message);
+      } else {
+        setError("Unable to submit registration. Please try again.");
+      }
+    } finally {
+      setSubmitting(false);
     }
+  }
 
-    setMpesaCode(cleanedCode);
-    setCodeAttached(true);
-
-    alert(
-      "M-Pesa transaction code attached. The academy will verify the payment after registration."
-    );
-  };
-
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-
-    if (!codeAttached) {
-      alert(
-        "Please enter and attach your M-Pesa transaction code before submitting."
-      );
-      return;
-    }
-
-    if (!agreed) {
-      alert(
-        "Please agree to the Parental Consent & Terms before submitting."
-      );
-      return;
-    }
-
-    setSubmitted(true);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const resetRegistration = () => {
+  function startNewRegistration() {
+    setFormData(initialFormData);
+    setRegistrationId("");
+    setError("");
     setSubmitted(false);
-    setAgreed(false);
-    setMpesaCode("");
-    setCodeAttached(false);
 
-    setFormData({
-      fullName: "",
-      dob: "",
-      gender: "",
-      nationality: "Kenyan",
-      category: "",
-      position: "",
-      address: "",
-      phone: "",
-      emergencyName: "",
-      emergencyRelation: "",
-      emergencyPhone: "",
-      allergies: "",
-      medicalConditions: "",
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
     });
+  }
 
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
+  if (submitted) {
+    return (
+      <main className="min-h-screen bg-slate-50">
+        <section className="bg-blue-950 px-5 py-16 text-white">
+          <div className="mx-auto max-w-4xl text-center">
+            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-green-500 text-4xl">
+              ✓
+            </div>
 
-  return (
-    <main className="min-h-screen bg-white text-slate-900 print:bg-white">
+            <p className="mt-6 text-sm font-black uppercase tracking-[0.25em] text-sky-400">
+              Nasra Santos Football Academy
+            </p>
 
-      {/* ================================================= */}
-      {/* HERO */}
-      {/* ================================================= */}
+            <h1 className="mt-3 text-3xl font-black uppercase md:text-5xl">
+              Registration Submitted
+            </h1>
 
-      <section className="relative overflow-hidden bg-blue-950 px-6 py-20 text-white print:hidden">
-        <div className="absolute -right-32 -top-32 h-96 w-96 rounded-full bg-sky-400/10" />
-        <div className="absolute -bottom-40 -left-32 h-96 w-96 rounded-full bg-sky-400/10" />
-
-        <div className="relative z-10 mx-auto max-w-5xl text-center">
-          <p className="text-sm font-black uppercase tracking-[0.3em] text-sky-400">
-            Player Registration
-          </p>
-
-          <h1 className="mt-4 text-4xl font-black uppercase md:text-6xl">
-            Join The
-            <span className="block text-sky-400">Gardeners</span>
-          </h1>
-
-          <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-slate-300">
-            Complete the official Nasra Santos Football Academy registration
-            form to begin your football journey with us.
-          </p>
-
-          <div className="mx-auto mt-8 flex max-w-3xl flex-wrap justify-center gap-3 text-xs font-bold">
-            <span className="rounded-full bg-white/10 px-5 py-3">
-              Nairobi, Kenya
-            </span>
-
-            <span className="rounded-full bg-white/10 px-5 py-3">
-              U7 – Senior
-            </span>
-
-            <span className="rounded-full bg-white/10 px-5 py-3">
-              Official Academy Registration
-            </span>
+            <p className="mx-auto mt-5 max-w-2xl leading-7 text-slate-300">
+              Your player registration has been received successfully and is
+              awaiting review by the academy.
+            </p>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* ================================================= */}
-      {/* MAIN */}
-      {/* ================================================= */}
-
-      <section className="mx-auto max-w-5xl px-5 py-14 md:px-6 md:py-20">
-
-        {submitted ? (
-
-          /* ================================================= */
-          /* RECEIPT */
-          /* ================================================= */
-
-          <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-xl md:p-12 print:border-none print:p-0 print:shadow-none">
-
-            <div className="border-b border-slate-200 pb-8 text-center">
-              <div className="mb-5 inline-flex rounded-full bg-amber-100 px-5 py-2 text-xs font-black uppercase tracking-wider text-amber-800">
-                Pending Academy Verification
-              </div>
-
-              <h1 className="text-3xl font-black uppercase text-blue-950 md:text-4xl">
-                Registration Received
-              </h1>
-
-              <p className="mt-3 text-slate-600">
-                Nasra Santos Football Academy
-              </p>
-            </div>
-
-            <div className="mt-8 rounded-2xl border border-sky-200 bg-sky-50 p-6">
-              <p className="font-black text-blue-950">
-                Thank you, {formData.fullName}.
+        <section className="px-5 py-12">
+          <div className="mx-auto max-w-3xl rounded-3xl bg-white p-7 shadow-sm md:p-10">
+            <div className="border-b border-slate-200 pb-6">
+              <p className="text-xs font-black uppercase tracking-widest text-sky-500">
+                Registration Receipt
               </p>
 
-              <p className="mt-2 text-sm leading-7 text-slate-600">
-                Your registration form has been completed on this device.
-                Your M-Pesa transaction reference is awaiting verification by
-                Nasra Santos Football Academy.
-              </p>
-            </div>
-
-            <div className="mt-8 grid gap-6 md:grid-cols-2">
-
-              {/* PLAYER */}
-
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
-                <p className="text-xs font-black uppercase tracking-widest text-sky-500">
-                  Player Information
-                </p>
-
-                <div className="mt-5 space-y-3 text-sm">
-                  <p>
-                    <strong>Name:</strong>{" "}
-                    {formData.fullName || "N/A"}
-                  </p>
-
-                  <p>
-                    <strong>Date of Birth:</strong>{" "}
-                    {formData.dob || "N/A"}
-                  </p>
-
-                  <p>
-                    <strong>Category:</strong>{" "}
-                    {formData.category || "N/A"}
-                  </p>
-
-                  <p>
-                    <strong>Position:</strong>{" "}
-                    {formData.position || "N/A"}
-                  </p>
-
-                  <p>
-                    <strong>Phone:</strong>{" "}
-                    {formData.phone || "N/A"}
-                  </p>
-                </div>
-              </div>
-
-              {/* PAYMENT */}
-
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
-                <p className="text-xs font-black uppercase tracking-widest text-sky-500">
-                  Payment Information
-                </p>
-
-                <div className="mt-5 space-y-3 text-sm">
-                  <p>
-                    <strong>Expected Amount:</strong>{" "}
-                    <span className="font-black text-emerald-700">
-                      Ksh {TOTAL_FEE.toLocaleString()}
-                    </span>
-                  </p>
-
-                  <p>
-                    <strong>M-Pesa Reference:</strong>{" "}
-                    <span className="font-mono font-black text-blue-950">
-                      {mpesaCode}
-                    </span>
-                  </p>
-
-                  <p>
-                    <strong>Status:</strong>{" "}
-                    <span className="font-black text-amber-600">
-                      Pending Verification
-                    </span>
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* NEXT STEPS */}
-
-            <div className="mt-8 rounded-2xl border border-slate-200 p-6 md:p-8">
-              <h2 className="text-lg font-black uppercase text-blue-950">
-                What Happens Next?
+              <h2 className="mt-2 text-2xl font-black uppercase text-blue-950">
+                {formData.fullName}
               </h2>
 
-              <div className="mt-5 space-y-4 text-sm leading-7 text-slate-600">
-                <p>
-                  <strong className="text-blue-950">1.</strong> Academy
-                  management will check the submitted M-Pesa transaction
-                  reference.
+              <p className="mt-2 text-sm text-slate-500">
+                Keep this page for your records.
+              </p>
+            </div>
+
+            <div className="mt-7 grid gap-4 sm:grid-cols-2">
+              <ReceiptItem label="Player" value={formData.fullName} />
+              <ReceiptItem label="Category" value={formData.category} />
+              <ReceiptItem label="Position" value={formData.position} />
+              <ReceiptItem label="Phone" value={formData.phone} />
+              <ReceiptItem
+                label="M-Pesa Code"
+                value={formData.mpesaCode || "Not provided"}
+              />
+              <ReceiptItem
+                label="Payment Status"
+                value="Pending Verification"
+              />
+            </div>
+
+            {registrationId && (
+              <div className="mt-6 rounded-2xl bg-slate-50 p-5">
+                <p className="text-xs font-black uppercase tracking-wider text-slate-500">
+                  Registration Reference
                 </p>
 
-                <p>
-                  <strong className="text-blue-950">2.</strong> The payment
-                  will be confirmed against the academy payment records.
-                </p>
-
-                <p>
-                  <strong className="text-blue-950">3.</strong> After
-                  approval, the academy will contact the player or
-                  parent/guardian with further instructions.
-                </p>
-
-                <p>
-                  <strong className="text-blue-950">4.</strong> Any required
-                  physical registration items can then be submitted to the
-                  academy.
+                <p className="mt-2 break-all text-sm font-bold text-blue-950">
+                  {registrationId}
                 </p>
               </div>
+            )}
+
+            <div className="mt-7 rounded-2xl border border-amber-200 bg-amber-50 p-5">
+              <p className="font-black text-amber-900">
+                Payment verification is pending.
+              </p>
+
+              <p className="mt-2 text-sm leading-6 text-amber-800">
+                Providing an M-Pesa transaction code does not automatically
+                confirm payment. Nasra Santos Football Academy will verify the
+                payment before updating the registration status.
+              </p>
             </div>
 
-            {/* IMPORTANT CURRENT LIMITATION */}
-
-            <div className="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm leading-6 text-amber-900 print:hidden">
-              <strong>Important:</strong> Online database submission is not
-              active yet. For now, please print or save this receipt and
-              contact the academy to complete verification.
-            </div>
-
-            <div className="mt-8 flex flex-wrap justify-center gap-4 print:hidden">
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="rounded-full bg-blue-950 px-8 py-4 text-sm font-black uppercase text-white transition hover:bg-sky-400 hover:text-blue-950"
+                className="rounded-xl bg-blue-950 px-6 py-4 text-sm font-black uppercase tracking-wider text-white transition hover:bg-sky-400 hover:text-blue-950"
               >
-                Print / Save Receipt
+                Print Receipt
+              </button>
+
+              <button
+                type="button"
+                onClick={startNewRegistration}
+                className="rounded-xl border border-slate-300 px-6 py-4 text-sm font-black uppercase tracking-wider text-blue-950 transition hover:bg-slate-100"
+              >
+                New Registration
               </button>
 
               <Link
                 href="/"
-                className="rounded-full border-2 border-blue-950 px-8 py-4 text-sm font-black uppercase text-blue-950 transition hover:bg-blue-950 hover:text-white"
+                className="rounded-xl border border-slate-300 px-6 py-4 text-center text-sm font-black uppercase tracking-wider text-blue-950 transition hover:bg-slate-100"
               >
-                Return Home
+                Home
               </Link>
-
-              <button
-                type="button"
-                onClick={resetRegistration}
-                className="rounded-full border-2 border-slate-300 px-8 py-4 text-sm font-black uppercase text-slate-600 transition hover:bg-slate-100"
-              >
-                New Registration
-              </button>
             </div>
           </div>
+        </section>
+      </main>
+    );
+  }
 
-        ) : (
+  return (
+    <main className="min-h-screen bg-slate-50">
+      {/* Hero */}
+      <section className="bg-blue-950 px-5 py-16 text-white md:py-20">
+        <div className="mx-auto max-w-5xl text-center">
+          <p className="text-sm font-black uppercase tracking-[0.25em] text-sky-400">
+            Join The Gardeners
+          </p>
 
-          /* ================================================= */
-          /* FORM */
-          /* ================================================= */
+          <h1 className="mt-3 text-4xl font-black uppercase md:text-6xl">
+            Player Registration
+          </h1>
 
-          <form onSubmit={handleSubmit} className="space-y-8">
+          <p className="mx-auto mt-5 max-w-2xl leading-7 text-slate-300">
+            Register your player with Nasra Santos Football Academy and begin
+            the journey of development, discipline and opportunity.
+          </p>
+        </div>
+      </section>
 
-            {/* INTRO */}
-
-            <div className="text-center">
-              <p className="font-black uppercase tracking-widest text-sky-500">
-                Official Registration Form
-              </p>
-
-              <h2 className="mt-3 text-3xl font-black uppercase text-blue-950 md:text-4xl">
-                Player Application
-              </h2>
-
-              <p className="mx-auto mt-4 max-w-2xl leading-7 text-slate-600">
-                Please complete all required information carefully before
-                submitting your registration.
-              </p>
-            </div>
-
-            {/* ================================================= */}
-            {/* COST */}
-            {/* ================================================= */}
-
-            <div className="overflow-hidden rounded-3xl border border-sky-200 bg-sky-50">
-
-              <div className="bg-blue-950 px-7 py-5 text-white">
-                <p className="text-xs font-black uppercase tracking-widest text-sky-300">
-                  Registration Requirements
-                </p>
-
-                <h2 className="mt-1 text-xl font-black uppercase">
-                  Initial Registration Cost
-                </h2>
-              </div>
-
-              <div className="space-y-5 p-7 md:p-9">
-
-                <div className="flex justify-between gap-5 border-b border-sky-200 pb-4">
-                  <div>
-                    <p className="font-black text-blue-950">
-                      Registration Fee
-                    </p>
-                    <p className="mt-1 text-sm text-slate-600">
-                      Academy registration
-                    </p>
-                  </div>
-
-                  <p className="font-black text-blue-950">
-                    Ksh 500
-                  </p>
-                </div>
-
-                <div className="flex justify-between gap-5 border-b border-sky-200 pb-4">
-                  <div>
-                    <p className="font-black text-blue-950">
-                      Two Full Kits
-                    </p>
-                    <p className="mt-1 text-sm text-slate-600">
-                      Yellow kit + luminous kit
-                    </p>
-                  </div>
-
-                  <p className="font-black text-blue-950">
-                    Ksh 3,000
-                  </p>
-                </div>
-
-                <div className="flex justify-between gap-5 border-b border-sky-200 pb-4">
-                  <div>
-                    <p className="font-black text-blue-950">
-                      First Month Training Fee
-                    </p>
-                    <p className="mt-1 text-sm text-slate-600">
-                      First month academy training
-                    </p>
-                  </div>
-
-                  <p className="font-black text-blue-950">
-                    Ksh 3,000
-                  </p>
-                </div>
-
-                <div className="flex justify-between gap-5">
-                  <div>
-                    <p className="font-black text-blue-950">
-                      Football
-                    </p>
-                    <p className="mt-1 text-sm text-slate-600">
-                      One football to be submitted physically
-                    </p>
-                  </div>
-
-                  <p className="text-right text-sm font-bold text-slate-500">
-                    Physical Item
-                  </p>
-                </div>
-
-                <div className="mt-6 flex items-center justify-between rounded-2xl bg-white p-5 shadow-sm">
-                  <p className="font-black uppercase text-blue-950">
-                    Total Payable
-                  </p>
-
-                  <p className="text-2xl font-black text-emerald-600">
-                    Ksh {TOTAL_FEE.toLocaleString()}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* ================================================= */}
-            {/* PLAYER DETAILS */}
-            {/* ================================================= */}
-
+      <section className="px-5 py-12 md:py-16">
+        <div className="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1fr_340px]">
+          {/* Form */}
+          <form
+            onSubmit={handleSubmit}
+            className="space-y-8 rounded-3xl bg-white p-6 shadow-sm md:p-9"
+          >
             <FormSection
               number="01"
               title="Player Information"
-              description="Tell us about the player joining the academy."
+              description="Enter the player's personal and football information."
             >
-              <div className="grid gap-6 md:grid-cols-2">
-
+              <div className="grid gap-5 md:grid-cols-2">
                 <InputField
                   label="Full Name"
-                  name="fullName"
+                  type="text"
                   value={formData.fullName}
-                  onChange={handleInputChange}
-                  placeholder="Full name of player"
+                  onChange={(value) => updateField("fullName", value)}
                   required
                 />
 
                 <InputField
                   label="Date of Birth"
-                  name="dob"
                   type="date"
                   value={formData.dob}
-                  onChange={handleInputChange}
+                  onChange={(value) => updateField("dob", value)}
                   required
                 />
 
                 <SelectField
                   label="Gender"
-                  name="gender"
                   value={formData.gender}
-                  onChange={handleInputChange}
+                  onChange={(value) => updateField("gender", value)}
+                  options={["Male", "Female"]}
                   required
-                  options={[
-                    ["", "Select Gender"],
-                    ["Male", "Male"],
-                    ["Female", "Female"],
-                  ]}
                 />
 
                 <InputField
                   label="Nationality"
-                  name="nationality"
+                  type="text"
                   value={formData.nationality}
-                  onChange={handleInputChange}
+                  onChange={(value) => updateField("nationality", value)}
                   required
                 />
 
                 <SelectField
-                  label="Category / Age Group"
-                  name="category"
+                  label="Team Category"
                   value={formData.category}
-                  onChange={handleInputChange}
-                  required
+                  onChange={(value) => updateField("category", value)}
                   options={[
-                    ["", "Select Category"],
-                    ["U7", "U7 (Under 7)"],
-                    ["U9", "U9 (Under 9)"],
-                    ["U11", "U11 (Under 11)"],
-                    ["U13", "U13 (Under 13)"],
-                    ["U15", "U15 (Under 15)"],
-                    ["U17", "U17 (Under 17)"],
-                    ["Senior", "Senior Team"],
+                    "U7",
+                    "U9",
+                    "U11",
+                    "U13",
+                    "U15",
+                    "U17",
+                    "Senior Team",
                   ]}
+                  required
                 />
 
                 <SelectField
                   label="Preferred Position"
-                  name="position"
                   value={formData.position}
-                  onChange={handleInputChange}
-                  required
+                  onChange={(value) => updateField("position", value)}
                   options={[
-                    ["", "Select Position"],
-                    ["Goalkeeper", "Goalkeeper (GK)"],
-                    ["Defender", "Defender (CB / LB / RB)"],
-                    ["Midfielder", "Midfielder (CM / CDM / CAM)"],
-                    ["Forward", "Forward / Winger (ST / LW / RW)"],
-                    ["Utility", "Flexible / Any Position"],
+                    "Goalkeeper",
+                    "Defender",
+                    "Midfielder",
+                    "Forward",
+                    "Not Sure",
                   ]}
-                />
-
-                <InputField
-                  label="Home Address"
-                  name="address"
-                  value={formData.address}
-                  onChange={handleInputChange}
-                  placeholder="e.g. Nasra Estate, Nairobi"
-                  required
-                />
-
-                <InputField
-                  label="Player / Parent Phone"
-                  name="phone"
-                  type="tel"
-                  value={formData.phone}
-                  onChange={handleInputChange}
-                  placeholder="07XXXXXXXX"
-                  required
-                />
-              </div>
-            </FormSection>
-
-            {/* ================================================= */}
-            {/* EMERGENCY CONTACT */}
-            {/* ================================================= */}
-
-            <FormSection
-              number="02"
-              title="Emergency Contact"
-              description="Provide the person we should contact in case of an emergency."
-            >
-              <div className="grid gap-6 md:grid-cols-3">
-
-                <InputField
-                  label="Contact Name"
-                  name="emergencyName"
-                  value={formData.emergencyName}
-                  onChange={handleInputChange}
-                  placeholder="Full name"
-                  required
-                />
-
-                <InputField
-                  label="Relationship"
-                  name="emergencyRelation"
-                  value={formData.emergencyRelation}
-                  onChange={handleInputChange}
-                  placeholder="Parent / Guardian"
                   required
                 />
 
                 <InputField
                   label="Phone Number"
-                  name="emergencyPhone"
                   type="tel"
-                  value={formData.emergencyPhone}
-                  onChange={handleInputChange}
-                  placeholder="07XXXXXXXX"
+                  value={formData.phone}
+                  onChange={(value) => updateField("phone", value)}
+                  required
+                />
+
+                <InputField
+                  label="Home Address / Area"
+                  type="text"
+                  value={formData.address}
+                  onChange={(value) => updateField("address", value)}
                   required
                 />
               </div>
             </FormSection>
 
-            {/* ================================================= */}
-            {/* MEDICAL */}
-            {/* ================================================= */}
+            <FormSection
+              number="02"
+              title="Emergency Contact"
+              description="Provide the details of a parent, guardian or emergency contact."
+            >
+              <div className="grid gap-5 md:grid-cols-2">
+                <InputField
+                  label="Emergency Contact Name"
+                  type="text"
+                  value={formData.emergencyName}
+                  onChange={(value) => updateField("emergencyName", value)}
+                  required
+                />
+
+                <InputField
+                  label="Relationship to Player"
+                  type="text"
+                  value={formData.emergencyRelation}
+                  onChange={(value) => updateField("emergencyRelation", value)}
+                  required
+                />
+
+                <div className="md:col-span-2">
+                  <InputField
+                    label="Emergency Phone Number"
+                    type="tel"
+                    value={formData.emergencyPhone}
+                    onChange={(value) => updateField("emergencyPhone", value)}
+                    required
+                  />
+                </div>
+              </div>
+            </FormSection>
 
             <FormSection
               number="03"
               title="Medical Information"
-              description="Provide information that may help academy staff respond appropriately during training or matches."
+              description="Help the academy understand any important medical information."
             >
-              <div className="grid gap-6 md:grid-cols-2">
-
+              <div className="grid gap-5 md:grid-cols-2">
                 <TextAreaField
                   label="Allergies"
-                  name="allergies"
                   value={formData.allergies}
-                  onChange={handleInputChange}
-                  placeholder="Enter known allergies or write None"
+                  onChange={(value) => updateField("allergies", value)}
+                  placeholder="Write none if there are no known allergies."
                 />
 
                 <TextAreaField
                   label="Medical Conditions"
-                  name="medicalConditions"
                   value={formData.medicalConditions}
-                  onChange={handleInputChange}
-                  placeholder="Enter relevant medical information or write None"
+                  onChange={(value) =>
+                    updateField("medicalConditions", value)
+                  }
+                  placeholder="Write none if there are no known conditions."
                 />
               </div>
             </FormSection>
 
-            {/* ================================================= */}
-            {/* PAYMENT */}
-            {/* ================================================= */}
+            <FormSection
+              number="04"
+              title="Payment Information"
+              description="Enter the M-Pesa transaction code if payment has already been made."
+            >
+              <div className="rounded-2xl bg-slate-50 p-5">
+                <p className="text-sm font-bold text-slate-600">
+                  Paybill / M-Pesa Number
+                </p>
 
-            <div className="overflow-hidden rounded-3xl border-2 border-emerald-200 bg-emerald-50">
+                <p className="mt-1 text-2xl font-black text-blue-950">
+                  {PAYMENT_NUMBER}
+                </p>
 
-              <div className="flex flex-col gap-4 bg-emerald-700 px-7 py-6 text-white sm:flex-row sm:items-center sm:justify-between">
-
-                <div>
-                  <p className="text-xs font-black uppercase tracking-widest text-emerald-100">
-                    Step 04
-                  </p>
-
-                  <h2 className="mt-1 text-xl font-black uppercase">
-                    M-Pesa Payment
-                  </h2>
-                </div>
-
-                <span
-                  className={`self-start rounded-full px-4 py-2 text-xs font-black uppercase ${
-                    codeAttached
-                      ? "bg-white text-emerald-700"
-                      : "bg-emerald-900 text-white"
-                  }`}
-                >
-                  {codeAttached
-                    ? "Code Attached"
-                    : "Payment Required"}
-                </span>
+                <p className="mt-2 text-sm text-slate-500">
+                  Total registration package: Ksh {TOTAL_FEE.toLocaleString()}
+                </p>
               </div>
 
-              <div className="space-y-7 p-7 md:p-9">
+              <div className="mt-5">
+                <InputField
+                  label="M-Pesa Transaction Code"
+                  type="text"
+                  value={formData.mpesaCode}
+                  onChange={(value) =>
+                    updateField("mpesaCode", value.toUpperCase())
+                  }
+                  placeholder="Example: ABC123XYZ"
+                />
 
-                <div>
-                  <p className="font-black text-emerald-950">
-                    Pay Ksh {TOTAL_FEE.toLocaleString()} via M-Pesa
-                  </p>
-
-                  <p className="mt-2 text-sm leading-7 text-emerald-900/80">
-                    Complete the payment first, then enter the transaction
-                    code from the M-Pesa confirmation message.
-                  </p>
-                </div>
-
-                {/* PAYMENT NUMBER */}
-
-                <div className="rounded-2xl border border-emerald-200 bg-white p-6 text-center">
-
-                  <p className="text-xs font-black uppercase tracking-widest text-slate-500">
-                    Send Money To
-                  </p>
-
-                  <p className="mt-2 text-3xl font-black tracking-wide text-blue-950">
-                    {PAYMENT_NUMBER}
-                  </p>
-
-                  <p className="mt-2 text-sm font-bold text-emerald-700">
-                    Amount: Ksh {TOTAL_FEE.toLocaleString()}
-                  </p>
-                </div>
-
-                {/* INSTRUCTIONS */}
-
-                <div className="rounded-2xl bg-white p-6">
-                  <p className="font-black uppercase text-blue-950">
-                    Payment Instructions
-                  </p>
-
-                  <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm leading-7 text-slate-600">
-                    <li>Open M-Pesa on your phone.</li>
-                    <li>
-                      Select <strong>Send Money</strong>.
-                    </li>
-                    <li>
-                      Enter <strong>{PAYMENT_NUMBER}</strong>.
-                    </li>
-                    <li>
-                      Enter{" "}
-                      <strong>
-                        Ksh {TOTAL_FEE.toLocaleString()}
-                      </strong>.
-                    </li>
-                    <li>Complete the transaction using your M-Pesa PIN.</li>
-                    <li>
-                      Copy the transaction code from the confirmation message.
-                    </li>
-                  </ol>
-                </div>
-
-                {/* MPESA CODE */}
-
-                <div>
-                  <label className="mb-2 block text-xs font-black uppercase tracking-wider text-emerald-950">
-                    M-Pesa Transaction Code *
-                  </label>
-
-                  <div className="flex flex-col gap-3 sm:flex-row">
-
-                    <input
-                      type="text"
-                      value={mpesaCode}
-                      onChange={(e) => {
-                        setMpesaCode(e.target.value.toUpperCase());
-
-                        if (codeAttached) {
-                          setCodeAttached(false);
-                        }
-                      }}
-                      disabled={codeAttached}
-                      placeholder="Enter transaction code"
-                      className="min-w-0 flex-1 rounded-xl border border-emerald-300 bg-white px-4 py-4 font-mono text-sm uppercase outline-none transition focus:border-emerald-600 disabled:bg-slate-100"
-                    />
-
-                    {!codeAttached ? (
-                      <button
-                        type="button"
-                        onClick={handleAttachCode}
-                        className="rounded-xl bg-emerald-700 px-7 py-4 text-xs font-black uppercase tracking-wider text-white transition hover:bg-emerald-800"
-                      >
-                        Attach Code
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setCodeAttached(false)}
-                        className="rounded-xl bg-slate-200 px-7 py-4 text-xs font-black uppercase tracking-wider text-slate-700 transition hover:bg-slate-300"
-                      >
-                        Edit Code
-                      </button>
-                    )}
-                  </div>
-
-                  {codeAttached && (
-                    <div className="mt-4 rounded-xl border border-emerald-200 bg-white p-4">
-                      <p className="text-sm font-bold text-emerald-700">
-                        ✓ Transaction code {mpesaCode} attached.
-                      </p>
-
-                      <p className="mt-1 text-xs leading-5 text-slate-500">
-                        This does not confirm payment. Academy management
-                        will verify the transaction before approving the
-                        registration.
-                      </p>
-                    </div>
-                  )}
-                </div>
+                <p className="mt-2 text-xs leading-5 text-slate-500">
+                  The transaction code will be submitted for verification. It
+                  does not automatically confirm payment.
+                </p>
               </div>
-            </div>
-
-            {/* ================================================= */}
-            {/* CONSENT */}
-            {/* ================================================= */}
+            </FormSection>
 
             <FormSection
               number="05"
-              title="Consent & Declaration"
-              description="Please read the declaration carefully before submitting."
+              title="Consent"
+              description="Please review before submitting the application."
             >
-              <div className="rounded-2xl bg-slate-50 p-5 text-sm leading-7 text-slate-600">
-                By submitting this form, I confirm that the information
-                provided is accurate. As the parent/guardian of an applicant
-                under 18, or as an adult applicant, I give permission to
-                participate in Nasra Santos Football Academy activities. I
-                understand that football involves physical activity and agree
-                to follow academy rules and the Code of Conduct. I authorize
-                academy staff to seek appropriate emergency assistance when
-                reasonably necessary.
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm leading-7 text-slate-600">
+                By submitting this registration, you confirm that the
+                information provided is accurate and that Nasra Santos Football
+                Academy may use it for player registration, communication,
+                safety and academy administration.
               </div>
-
-              <label className="mt-6 flex cursor-pointer items-start gap-4 rounded-2xl border border-slate-200 p-5 transition hover:border-sky-300">
-
-                <input
-                  type="checkbox"
-                  checked={agreed}
-                  onChange={(e) => setAgreed(e.target.checked)}
-                  className="mt-1 h-5 w-5 flex-shrink-0"
-                />
-
-                <span className="text-sm font-semibold leading-6 text-slate-700">
-                  I have read and agree to the registration declaration,
-                  parental consent requirements, academy rules and Code of
-                  Conduct. *
-                </span>
-              </label>
             </FormSection>
 
-            {/* ================================================= */}
-            {/* SUBMIT */}
-            {/* ================================================= */}
+            {error && (
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-5 text-sm font-semibold text-red-700">
+                {error}
+              </div>
+            )}
 
-            <div className="rounded-3xl bg-blue-950 p-7 text-center text-white md:p-10">
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full rounded-xl bg-blue-950 px-6 py-4 text-sm font-black uppercase tracking-wider text-white transition hover:bg-sky-400 hover:text-blue-950 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {submitting ? "Submitting Registration..." : "Submit Registration"}
+            </button>
+          </form>
 
-              <h2 className="text-2xl font-black uppercase">
-                Ready To Join The Gardeners?
-              </h2>
-
-              <p className="mx-auto mt-3 max-w-xl text-sm leading-7 text-slate-300">
-                Review your information carefully before submitting.
-                Registration remains pending until academy management
-                verifies the payment and application.
+          {/* Registration Information */}
+          <aside className="space-y-6">
+            <div className="rounded-3xl bg-blue-950 p-7 text-white">
+              <p className="text-xs font-black uppercase tracking-widest text-sky-400">
+                Registration Package
               </p>
 
-              <button
-                type="submit"
-                disabled={!codeAttached || !agreed}
-                className={`mt-7 w-full rounded-full px-8 py-4 font-black uppercase tracking-wider transition sm:w-auto ${
-                  codeAttached && agreed
-                    ? "bg-sky-400 text-blue-950 hover:bg-white"
-                    : "cursor-not-allowed bg-slate-700 text-slate-400"
-                }`}
-              >
-                {!codeAttached
-                  ? "Attach M-Pesa Code First"
-                  : !agreed
-                  ? "Accept Consent To Continue"
-                  : "Submit Registration"}
-              </button>
+              <h2 className="mt-2 text-3xl font-black">
+                Ksh {TOTAL_FEE.toLocaleString()}
+              </h2>
 
-              <p className="mt-4 text-xs text-slate-400">
-                Submission does not automatically confirm academy admission.
+              <div className="mt-6 space-y-4 text-sm">
+                <FeeRow label="Registration Fee" amount="Ksh 500" />
+                <FeeRow label="Two Academy Kits" amount="Ksh 3,000" />
+                <FeeRow label="First Month Training" amount="Ksh 3,000" />
+              </div>
+
+              <div className="mt-6 border-t border-blue-800 pt-5">
+                <p className="text-sm leading-6 text-slate-300">
+                  The package also includes one football for the player.
+                </p>
+              </div>
+            </div>
+
+            <div className="rounded-3xl bg-white p-7 shadow-sm">
+              <p className="text-xs font-black uppercase tracking-widest text-sky-500">
+                Payment
+              </p>
+
+              <h3 className="mt-2 text-xl font-black uppercase text-blue-950">
+                M-Pesa
+              </h3>
+
+              <p className="mt-4 text-sm text-slate-500">
+                Payment Number
+              </p>
+
+              <p className="mt-1 text-2xl font-black text-blue-950">
+                {PAYMENT_NUMBER}
+              </p>
+
+              <p className="mt-4 text-sm leading-6 text-slate-600">
+                Keep your M-Pesa confirmation message. Academy management will
+                verify payment before marking it as confirmed.
               </p>
             </div>
 
-          </form>
-        )}
+            <div className="rounded-3xl border border-sky-100 bg-sky-50 p-7">
+              <p className="text-xs font-black uppercase tracking-widest text-sky-600">
+                Need Help?
+              </p>
+
+              <h3 className="mt-2 text-xl font-black text-blue-950">
+                Contact Nasra Santos FA
+              </h3>
+
+              <p className="mt-3 text-sm leading-6 text-slate-600">
+                For registration assistance, contact the academy on:
+              </p>
+
+              <p className="mt-3 font-black text-blue-950">0746360438</p>
+
+              <p className="mt-1 break-all text-sm font-semibold text-blue-950">
+                nasrasantosfootballacademy@gmail.com
+              </p>
+            </div>
+          </aside>
+        </div>
       </section>
-
-      {/* ================================================= */}
-      {/* CONTACT */}
-      {/* ================================================= */}
-
-      {!submitted && (
-        <section className="bg-slate-50 px-6 py-14 text-center print:hidden">
-          <p className="text-sm font-black uppercase tracking-widest text-sky-500">
-            Need Help?
-          </p>
-
-          <h2 className="mt-2 text-2xl font-black uppercase text-blue-950">
-            Contact Nasra Santos FA
-          </h2>
-
-          <p className="mt-4 text-slate-600">
-            For registration assistance, contact the academy on{" "}
-            <strong>{PAYMENT_NUMBER}</strong>.
-          </p>
-
-          <Link
-            href="/#contact"
-            className="mt-6 inline-block rounded-full border-2 border-blue-950 px-7 py-3 text-sm font-black uppercase text-blue-950 transition hover:bg-blue-950 hover:text-white"
-          >
-            Contact Us
-          </Link>
-        </section>
-      )}
     </main>
   );
 }
-
-/* ================================================= */
-/* REUSABLE FORM SECTION */
-/* ================================================= */
 
 function FormSection({
   number,
@@ -901,11 +537,9 @@ function FormSection({
   children: React.ReactNode;
 }) {
   return (
-    <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm md:p-10">
-
-      <div className="mb-8 flex items-start gap-4 border-b border-slate-200 pb-6">
-
-        <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-blue-950 text-sm font-black text-sky-300">
+    <section>
+      <div className="mb-6 flex gap-4">
+        <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-sky-100 text-sm font-black text-blue-950">
           {number}
         </div>
 
@@ -921,85 +555,75 @@ function FormSection({
       </div>
 
       {children}
-    </div>
+    </section>
   );
 }
 
-/* ================================================= */
-/* INPUT */
-/* ================================================= */
-
 function InputField({
   label,
-  name,
+  type,
   value,
   onChange,
   placeholder,
-  type = "text",
   required = false,
 }: {
   label: string;
-  name: string;
+  type: string;
   value: string;
-  onChange: React.ChangeEventHandler<HTMLInputElement>;
+  onChange: (value: string) => void;
   placeholder?: string;
-  type?: string;
   required?: boolean;
 }) {
   return (
     <div>
-      <label className="mb-2 block text-xs font-black uppercase tracking-wider text-slate-700">
-        {label} {required && "*"}
+      <label className="mb-2 block text-sm font-bold text-slate-700">
+        {label}
+        {required && <span className="ml-1 text-red-500">*</span>}
       </label>
 
       <input
         type={type}
-        name={name}
-        required={required}
         value={value}
-        onChange={onChange}
+        onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3.5 text-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+        required={required}
+        className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
       />
     </div>
   );
 }
 
-/* ================================================= */
-/* SELECT */
-/* ================================================= */
-
 function SelectField({
   label,
-  name,
   value,
   onChange,
   options,
   required = false,
 }: {
   label: string;
-  name: string;
   value: string;
-  onChange: React.ChangeEventHandler<HTMLSelectElement>;
-  options: string[][];
+  onChange: (value: string) => void;
+  options: string[];
   required?: boolean;
 }) {
   return (
     <div>
-      <label className="mb-2 block text-xs font-black uppercase tracking-wider text-slate-700">
-        {label} {required && "*"}
+      <label className="mb-2 block text-sm font-bold text-slate-700">
+        {label}
+        {required && <span className="ml-1 text-red-500">*</span>}
       </label>
 
       <select
-        name={name}
-        required={required}
         value={value}
-        onChange={onChange}
-        className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3.5 text-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+        onChange={(event) => onChange(event.target.value)}
+        required={required}
+        className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
       >
-        {options.map(([value, label]) => (
-          <option key={`${name}-${value}`} value={value}>
-            {label}
+        <option value="">Select an option</option>
+
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
           </option>
         ))}
       </select>
@@ -1007,37 +631,51 @@ function SelectField({
   );
 }
 
-/* ================================================= */
-/* TEXTAREA */
-/* ================================================= */
-
 function TextAreaField({
   label,
-  name,
   value,
   onChange,
   placeholder,
 }: {
   label: string;
-  name: string;
   value: string;
-  onChange: React.ChangeEventHandler<HTMLTextAreaElement>;
+  onChange: (value: string) => void;
   placeholder?: string;
 }) {
   return (
     <div>
-      <label className="mb-2 block text-xs font-black uppercase tracking-wider text-slate-700">
+      <label className="mb-2 block text-sm font-bold text-slate-700">
         {label}
       </label>
 
       <textarea
-        name={name}
         value={value}
-        onChange={onChange}
+        onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         rows={4}
-        className="w-full resize-none rounded-xl border border-slate-300 bg-white px-4 py-3.5 text-sm outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+        className="w-full resize-none rounded-xl border border-slate-300 bg-white px-4 py-3 text-slate-900 outline-none transition focus:border-sky-400 focus:ring-2 focus:ring-sky-100"
       />
+    </div>
+  );
+}
+
+function FeeRow({ label, amount }: { label: string; amount: string }) {
+  return (
+    <div className="flex items-center justify-between gap-4">
+      <span className="text-slate-300">{label}</span>
+      <span className="font-black">{amount}</span>
+    </div>
+  );
+}
+
+function ReceiptItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-2xl bg-slate-50 p-4">
+      <p className="text-xs font-black uppercase tracking-wider text-slate-400">
+        {label}
+      </p>
+
+      <p className="mt-2 font-bold text-blue-950">{value}</p>
     </div>
   );
 }
