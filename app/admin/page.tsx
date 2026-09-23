@@ -22,11 +22,13 @@ export default async function AdminPage() {
   ).length;
 
   const approved = registrations.filter(
-    (registration) => registration.status?.toLowerCase() === "approved"
+    (registration) =>
+      registration.status?.toLowerCase() === "approved"
   ).length;
 
   const rejected = registrations.filter(
-    (registration) => registration.status?.toLowerCase() === "rejected"
+    (registration) =>
+      registration.status?.toLowerCase() === "rejected"
   ).length;
 
   return (
@@ -121,7 +123,7 @@ export default async function AdminPage() {
             </Link>
           </div>
 
-          {/* Fixtures */}
+          {/* Fixtures & Results */}
           <div className="rounded-3xl bg-white p-7 shadow-sm">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-xl">
               ⚽
@@ -132,19 +134,26 @@ export default async function AdminPage() {
             </h2>
 
             <p className="mt-3 min-h-14 text-sm leading-6 text-slate-600">
-              Add upcoming matches and update results that will appear on the
-              public website.
+              Add upcoming matches, update results, edit match information and
+              manage fixtures shown on the public website.
             </p>
 
-            <div className="mt-6 rounded-2xl bg-slate-100 p-4">
-              <p className="text-xs font-black uppercase tracking-wider text-slate-500">
-                Next Development
+            <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+              <p className="text-xs font-black uppercase tracking-wider text-emerald-700">
+                System Active
               </p>
 
-              <p className="mt-1 text-sm text-slate-700">
-                Match management system
+              <p className="mt-1 text-sm text-emerald-900">
+                Fixture management connected to the public website
               </p>
             </div>
+
+            <Link
+              href="/admin/fixtures"
+              className="mt-5 block rounded-xl bg-blue-950 px-5 py-3 text-center text-sm font-black uppercase tracking-wider text-white transition hover:bg-sky-400 hover:text-blue-950"
+            >
+              Manage Fixtures & Results
+            </Link>
           </div>
 
           {/* Website Content */}
@@ -185,18 +194,29 @@ export default async function AdminPage() {
           </h2>
 
           <div className="mt-6 grid gap-4 md:grid-cols-4">
-            <ProgressCard number="01" title="Secure Admin Login" complete />
+            <ProgressCard
+              number="01"
+              title="Secure Admin Login"
+              complete
+            />
+
             <ProgressCard
               number="02"
               title="Registration Database"
               complete
             />
+
             <ProgressCard
               number="03"
               title="Registration Management"
               complete
             />
-            <ProgressCard number="04" title="Fixtures & Content" />
+
+            <ProgressCard
+              number="04"
+              title="Fixtures & Results Management"
+              complete
+            />
           </div>
         </div>
       </div>
@@ -217,7 +237,9 @@ function StatCard({
         {title}
       </p>
 
-      <p className="mt-2 text-4xl font-black text-blue-950">{value}</p>
+      <p className="mt-2 text-4xl font-black text-blue-950">
+        {value}
+      </p>
     </div>
   );
 }
@@ -255,7 +277,9 @@ function ProgressCard({
         )}
       </div>
 
-      <p className="mt-2 text-sm font-black text-blue-950">{title}</p>
+      <p className="mt-2 text-sm font-black text-blue-950">
+        {title}
+      </p>
     </div>
   );
 }
