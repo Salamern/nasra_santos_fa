@@ -1,4 +1,5 @@
 import Link from "next/link";
+import AnnouncementsSection from "./components/announcements-section";
 
 const teams = [
   "U7",
@@ -192,6 +193,7 @@ export default function Home() {
 
       </section>
 
+<AnnouncementsSection />
 
       {/* ================================================= */}
       {/* ABOUT / INTRODUCTION */}
