@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { createAdminClient } from "@/lib/supabase/admin";
 import AnnouncementsSection from "./components/announcements-section";
+
 
 const teams = [
   "U7",
@@ -11,7 +13,15 @@ const teams = [
   "Senior Team",
 ];
 
-export default function Home() {
+export default async function Home() {
+    const supabase = createAdminClient();
+
+  const { data: contact } = await supabase
+    .from("contact_information")
+    .select("phone, email, location, city_country")
+    .order("id", { ascending: true })
+    .limit(1)
+    .maybeSingle();
   return (
     <main className="bg-white text-slate-900">
 
@@ -502,19 +512,19 @@ export default function Home() {
               </h3>
 
               <p className="mt-4 text-slate-300">
-                Nasra Garden Estate
+               {contact?.location ?? "Nasra Garden Estate"}
               </p>
 
               <p className="mt-2 text-slate-300">
-                Nairobi, Kenya
+                {contact?.city_country ?? "Nairobi, Kenya"}
               </p>
 
               <p className="mt-2 text-slate-300">
-                0746360438
+              {contact?.phone ?? "0746360438"}
               </p>
 
               <p className="mt-2 break-all text-slate-300">
-                nasrasantosfootballacademy@gmail.com
+                {contact?.email ?? "nasrasantosfootballacademy@gmail.com"}
               </p>
 
             </div>
