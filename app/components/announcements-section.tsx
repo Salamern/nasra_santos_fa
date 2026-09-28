@@ -1,4 +1,5 @@
 import { createAdminClient } from "@/lib/supabase/admin";
+import { unstable_noStore as noStore } from "next/cache";
 
 type Announcement = {
   id: string;
@@ -10,6 +11,7 @@ type Announcement = {
 };
 
 export default async function AnnouncementsSection() {
+      noStore();
   const supabase = createAdminClient();
 
   const { data, error } = await supabase
