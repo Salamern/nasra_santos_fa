@@ -22,6 +22,12 @@ export default async function Home() {
     .order("id", { ascending: true })
     .limit(1)
     .maybeSingle();
+    const { data: socialMedia } = await supabase
+  .from("social_media")
+  .select("instagram, tiktok, facebook, youtube")
+  .order("id", { ascending: true })
+  .limit(1)
+  .maybeSingle();
   return (
     <main className="bg-white text-slate-900">
 
@@ -530,32 +536,28 @@ export default async function Home() {
             </div>
 
 
-            {/* Social Media */}
+           {/* Social Media */}
+<div>
+  <h3 className="text-xl font-black">
+    FOLLOW THE GARDENERS
+  </h3>
 
-            <div>
+  <p className="mt-4 text-slate-300">
+    Instagram: @{socialMedia?.instagram || "nasra_santos_fa"}
+  </p>
 
-              <h3 className="text-xl font-black">
-                FOLLOW THE GARDENERS
-              </h3>
+  <p className="mt-2 text-slate-300">
+    TikTok: @{socialMedia?.tiktok || "nasra_santos_fa"}
+  </p>
 
-              <p className="mt-4 text-slate-300">
-                Instagram: @nasra_santos_fa
-              </p>
+  <p className="mt-2 text-slate-300">
+    Facebook: {socialMedia?.facebook || "Nasra Santos FA"}
+  </p>
 
-              <p className="mt-2 text-slate-300">
-                TikTok: @nasra_santos_fa
-              </p>
-
-              <p className="mt-2 text-slate-300">
-                Facebook: Nasra Santos FA
-              </p>
-
-              <p className="mt-2 text-slate-300">
-                YouTube: Nasra Santos
-              </p>
-
-            </div>
-
+  <p className="mt-2 text-slate-300">
+    YouTube: {socialMedia?.youtube || "Nasra Santos"}
+  </p>
+</div>
           </div>
 
 
