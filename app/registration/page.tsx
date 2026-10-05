@@ -1,10 +1,20 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 
-const TOTAL_FEE = 6500;
-const PAYMENT_NUMBER = "0746360438";
+type RegistrationInformation = {
+  id: number;
+  registration_fee: number;
+  yellow_kit_fee: number;
+  luminous_kit_fee: number;
+  monthly_training_fee: number;
+  payment_method: string;
+  till_number: string | null;
+  equipment_requirement: string | null;
+  payment_instructions: string | null;
+  total_fee: number;
+};
 
 type FormData = {
   fullName: string;
@@ -42,10 +52,53 @@ const initialFormData: FormData = {
 
 export default function RegistrationPage() {
   const [formData, setFormData] = useState<FormData>(initialFormData);
+
+  const [registrationInfo, setRegistrationInfo] =
+    useState<RegistrationInformation | null>(null);
+
+  const [loadingInfo, setLoadingInfo] = useState(true);
+  const [infoError, setInfoError] = useState("");
+
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [registrationId, setRegistrationId] = useState("");
+
+  useEffect(() => {
+    async function loadRegistrationInformation() {
+      try {
+        setLoadingInfo(true);
+        setInfoError("");
+
+        const response = await fetch("/api/registration-information", {
+          method: "GET",
+          cache: "no-store",
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            result.error || "Unable to load registration information."
+          );
+        }
+
+        setRegistrationInfo(result.registration);
+      } catch (error) {
+        console.error("Registration information error:", error);
+
+        setInfoError(
+          error instanceof Error
+            ? error.message
+            : "Unable to load registration information."
+        );
+      } finally {
+        setLoadingInfo(false);
+      }
+    }
+
+    loadRegistrationInformation();
+  }, []);
 
   function updateField(field: keyof FormData, value: string) {
     setFormData((previous) => ({
@@ -107,6 +160,12 @@ export default function RegistrationPage() {
     });
   }
 
+  const totalFee = registrationInfo?.total_fee ?? 0;
+
+  const kitsTotal =
+    (registrationInfo?.yellow_kit_fee ?? 0) +
+    (registrationInfo?.luminous_kit_fee ?? 0);
+
   if (submitted) {
     return (
       <main className="min-h-screen bg-slate-50">
@@ -152,14 +211,30 @@ export default function RegistrationPage() {
               <ReceiptItem label="Category" value={formData.category} />
               <ReceiptItem label="Position" value={formData.position} />
               <ReceiptItem label="Phone" value={formData.phone} />
+
               <ReceiptItem
                 label="M-Pesa Code"
                 value={formData.mpesaCode || "Not provided"}
               />
+
               <ReceiptItem
                 label="Payment Status"
                 value="Pending Verification"
               />
+
+              {registrationInfo && (
+                <>
+                  <ReceiptItem
+                    label="Registration Package"
+                    value={`KSh ${totalFee.toLocaleString()}`}
+                  />
+
+                  <ReceiptItem
+                    label="Till Number"
+                    value={registrationInfo.till_number || "Not available"}
+                  />
+                </>
+              )}
             </div>
 
             {registrationId && (
@@ -347,7 +422,9 @@ export default function RegistrationPage() {
                   label="Relationship to Player"
                   type="text"
                   value={formData.emergencyRelation}
-                  onChange={(value) => updateField("emergencyRelation", value)}
+                  onChange={(value) =>
+                    updateField("emergencyRelation", value)
+                  }
                   required
                 />
 
@@ -356,7 +433,9 @@ export default function RegistrationPage() {
                     label="Emergency Phone Number"
                     type="tel"
                     value={formData.emergencyPhone}
-                    onChange={(value) => updateField("emergencyPhone", value)}
+                    onChange={(value) =>
+                      updateField("emergencyPhone", value)
+                    }
                     required
                   />
                 </div>
@@ -390,21 +469,60 @@ export default function RegistrationPage() {
             <FormSection
               number="04"
               title="Payment Information"
-              description="Enter the M-Pesa transaction code if payment has already been made."
+              description="Pay using M-Pesa Buy Goods and Services, then enter the transaction code for verification."
             >
-              <div className="rounded-2xl bg-slate-50 p-5">
-                <p className="text-sm font-bold text-slate-600">
-                  Paybill / M-Pesa Number
-                </p>
+              {loadingInfo ? (
+                <div className="rounded-2xl bg-slate-50 p-5">
+                  <p className="font-bold text-slate-600">
+                    Loading payment information...
+                  </p>
+                </div>
+              ) : infoError ? (
+                <div className="rounded-2xl border border-red-200 bg-red-50 p-5">
+                  <p className="font-bold text-red-700">
+                    Payment information is temporarily unavailable.
+                  </p>
 
-                <p className="mt-1 text-2xl font-black text-blue-950">
-                  {PAYMENT_NUMBER}
-                </p>
+                  <p className="mt-2 text-sm text-red-600">{infoError}</p>
+                </div>
+              ) : registrationInfo ? (
+                <>
+                  <div className="rounded-2xl bg-slate-50 p-5">
+                    <p className="text-sm font-bold text-slate-600">
+                      M-Pesa Payment Method
+                    </p>
 
-                <p className="mt-2 text-sm text-slate-500">
-                  Total registration package: Ksh {TOTAL_FEE.toLocaleString()}
-                </p>
-              </div>
+                    <p className="mt-1 text-lg font-black text-blue-950">
+                      {registrationInfo.payment_method}
+                    </p>
+
+                    <p className="mt-5 text-sm font-bold text-slate-600">
+                      Buy Goods Till Number
+                    </p>
+
+                    <p className="mt-1 text-3xl font-black text-blue-950">
+                      {registrationInfo.till_number || "Not available"}
+                    </p>
+
+                    <p className="mt-4 text-sm text-slate-500">
+                      Total registration package: KSh{" "}
+                      {totalFee.toLocaleString()}
+                    </p>
+                  </div>
+
+                  {registrationInfo.payment_instructions && (
+                    <div className="mt-5 rounded-2xl border border-sky-200 bg-sky-50 p-5">
+                      <p className="text-xs font-black uppercase tracking-wider text-sky-700">
+                        How To Pay
+                      </p>
+
+                      <p className="mt-2 text-sm leading-7 text-slate-700">
+                        {registrationInfo.payment_instructions}
+                      </p>
+                    </div>
+                  )}
+                </>
+              ) : null}
 
               <div className="mt-5">
                 <InputField
@@ -418,8 +536,9 @@ export default function RegistrationPage() {
                 />
 
                 <p className="mt-2 text-xs leading-5 text-slate-500">
-                  The transaction code will be submitted for verification. It
-                  does not automatically confirm payment.
+                  Enter the transaction code from the M-Pesa confirmation
+                  message. The transaction will be submitted for manual
+                  verification and does not automatically confirm payment.
                 </p>
               </div>
             </FormSection>
@@ -445,10 +564,12 @@ export default function RegistrationPage() {
 
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || loadingInfo || !registrationInfo}
               className="w-full rounded-xl bg-blue-950 px-6 py-4 text-sm font-black uppercase tracking-wider text-white transition hover:bg-sky-400 hover:text-blue-950 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {submitting ? "Submitting Registration..." : "Submit Registration"}
+              {submitting
+                ? "Submitting Registration..."
+                : "Submit Registration"}
             </button>
           </form>
 
@@ -459,21 +580,60 @@ export default function RegistrationPage() {
                 Registration Package
               </p>
 
-              <h2 className="mt-2 text-3xl font-black">
-                Ksh {TOTAL_FEE.toLocaleString()}
-              </h2>
-
-              <div className="mt-6 space-y-4 text-sm">
-                <FeeRow label="Registration Fee" amount="Ksh 500" />
-                <FeeRow label="Two Academy Kits" amount="Ksh 3,000" />
-                <FeeRow label="First Month Training" amount="Ksh 3,000" />
-              </div>
-
-              <div className="mt-6 border-t border-blue-800 pt-5">
-                <p className="text-sm leading-6 text-slate-300">
-                  The package also includes one football for the player.
+              {loadingInfo ? (
+                <p className="mt-3 text-sm text-slate-300">
+                  Loading registration fees...
                 </p>
-              </div>
+              ) : registrationInfo ? (
+                <>
+                  <h2 className="mt-2 text-3xl font-black">
+                    KSh {totalFee.toLocaleString()}
+                  </h2>
+
+                  <div className="mt-6 space-y-4 text-sm">
+                    <FeeRow
+                      label="Registration Fee"
+                      amount={`KSh ${registrationInfo.registration_fee.toLocaleString()}`}
+                    />
+
+                    <FeeRow
+                      label="Yellow Academy Kit"
+                      amount={`KSh ${registrationInfo.yellow_kit_fee.toLocaleString()}`}
+                    />
+
+                    <FeeRow
+                      label="Luminous Academy Kit"
+                      amount={`KSh ${registrationInfo.luminous_kit_fee.toLocaleString()}`}
+                    />
+
+                    <FeeRow
+                      label="Two Academy Kits"
+                      amount={`KSh ${kitsTotal.toLocaleString()}`}
+                    />
+
+                    <FeeRow
+                      label="First Month Training"
+                      amount={`KSh ${registrationInfo.monthly_training_fee.toLocaleString()}`}
+                    />
+                  </div>
+
+                  {registrationInfo.equipment_requirement && (
+                    <div className="mt-6 border-t border-blue-800 pt-5">
+                      <p className="text-xs font-black uppercase tracking-wider text-sky-400">
+                        Equipment Requirement
+                      </p>
+
+                      <p className="mt-2 text-sm leading-6 text-slate-300">
+                        {registrationInfo.equipment_requirement}
+                      </p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <p className="mt-3 text-sm text-red-300">
+                  Registration fees are currently unavailable.
+                </p>
+              )}
             </div>
 
             <div className="rounded-3xl bg-white p-7 shadow-sm">
@@ -485,18 +645,31 @@ export default function RegistrationPage() {
                 M-Pesa
               </h3>
 
-              <p className="mt-4 text-sm text-slate-500">
-                Payment Number
-              </p>
+              {registrationInfo ? (
+                <>
+                  <p className="mt-4 text-sm text-slate-500">
+                    {registrationInfo.payment_method}
+                  </p>
 
-              <p className="mt-1 text-2xl font-black text-blue-950">
-                {PAYMENT_NUMBER}
-              </p>
+                  <p className="mt-4 text-sm font-bold text-slate-600">
+                    Till Number
+                  </p>
 
-              <p className="mt-4 text-sm leading-6 text-slate-600">
-                Keep your M-Pesa confirmation message. Academy management will
-                verify payment before marking it as confirmed.
-              </p>
+                  <p className="mt-1 text-3xl font-black text-blue-950">
+                    {registrationInfo.till_number || "Not available"}
+                  </p>
+
+                  <p className="mt-4 text-sm leading-6 text-slate-600">
+                    Complete the payment through M-Pesa and keep your
+                    confirmation message. Academy management will verify the
+                    payment before marking it as confirmed.
+                  </p>
+                </>
+              ) : (
+                <p className="mt-4 text-sm text-slate-500">
+                  Loading payment details...
+                </p>
+              )}
             </div>
 
             <div className="rounded-3xl border border-sky-100 bg-sky-50 p-7">
