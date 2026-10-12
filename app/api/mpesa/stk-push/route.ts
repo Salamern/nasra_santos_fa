@@ -1,0 +1,559 @@
+import { NextResponse } from "next/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+
+export const dynamic = "force-dynamic";
+
+const ALLOWED_ITEMS = [
+  "registration_fee",
+  "yellow_kit",
+  "luminous_kit",
+  "monthly_training",
+] as const;
+
+type PaymentItem = (typeof ALLOWED_ITEMS)[number];
+
+type DarajaTokenResponse = {
+  access_token?: string;
+  expires_in?: string;
+  errorCode?: string;
+  errorMessage?: string;
+};
+
+type StkPushResponse = {
+  MerchantRequestID?: string;
+  CheckoutRequestID?: string;
+  ResponseCode?: string;
+  ResponseDescription?: string;
+  CustomerMessage?: string;
+  errorCode?: string;
+  errorMessage?: string;
+};
+
+function isPaymentItem(value: unknown): value is PaymentItem {
+  return (
+    typeof value === "string" &&
+    ALLOWED_ITEMS.includes(value as PaymentItem)
+  );
+}
+
+function formatPhoneNumber(phone: string): string {
+  let cleaned = phone.replace(/\D/g, "");
+
+  if (cleaned.startsWith("0")) {
+    cleaned = `254${cleaned.substring(1)}`;
+  } else if (cleaned.startsWith("7") || cleaned.startsWith("1")) {
+    cleaned = `254${cleaned}`;
+  }
+
+  return cleaned;
+}
+
+function generateTimestamp(): string {
+  const now = new Date();
+
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  const seconds = String(now.getSeconds()).padStart(2, "0");
+
+  return `${year}${month}${day}${hours}${minutes}${seconds}`;
+}
+
+async function getAccessToken(
+  baseUrl: string,
+  consumerKey: string,
+  consumerSecret: string
+): Promise<string> {
+  const credentials = Buffer.from(
+    `${consumerKey}:${consumerSecret}`
+  ).toString("base64");
+
+  const response = await fetch(
+    `${baseUrl}/oauth/v1/generate?grant_type=client_credentials`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: `Basic ${credentials}`,
+      },
+      cache: "no-store",
+    }
+  );
+
+  const data = (await response.json()) as DarajaTokenResponse;
+
+  if (!response.ok || !data.access_token) {
+    console.error("Daraja authentication error:", {
+      status: response.status,
+      errorCode: data.errorCode,
+      errorMessage: data.errorMessage,
+    });
+
+    throw new Error(
+      data.errorMessage || "Unable to authenticate with Daraja."
+    );
+  }
+
+  return data.access_token;
+}
+
+export async function POST(request: Request) {
+  const adminSupabase = createAdminClient();
+
+  let paymentId: string | null = null;
+
+  try {
+    const body: unknown = await request.json();
+
+    if (
+      typeof body !== "object" ||
+      body === null ||
+      Array.isArray(body)
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Invalid request body.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const requestBody = body as Record<string, unknown>;
+
+    const playerName =
+      typeof requestBody.playerName === "string"
+        ? requestBody.playerName.trim()
+        : "";
+
+    const phone =
+      typeof requestBody.phone === "string"
+        ? requestBody.phone.trim()
+        : "";
+
+    const registrationId =
+      typeof requestBody.registrationId === "string" &&
+      requestBody.registrationId.trim()
+        ? requestBody.registrationId.trim()
+        : null;
+
+    const rawItems: unknown[] = Array.isArray(requestBody.items)
+      ? requestBody.items
+      : [];
+
+    const validItems = rawItems.filter(isPaymentItem);
+
+    const selectedItems: PaymentItem[] = Array.from(
+      new Set<PaymentItem>(validItems)
+    );
+
+    if (!playerName) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Player name is required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (!phone) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "M-Pesa phone number is required.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const formattedPhone = formatPhoneNumber(phone);
+
+    if (!/^254(7|1)\d{8}$/.test(formattedPhone)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Enter a valid Kenyan phone number, for example 0712345678.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (selectedItems.length === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Select at least one payment item.",
+        },
+        { status: 400 }
+      );
+    }
+
+    if (rawItems.length !== selectedItems.length) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "One or more selected payment items are invalid or duplicated.",
+        },
+        { status: 400 }
+      );
+    }
+
+    /*
+     * Get the official academy prices from Supabase.
+     *
+     * We never trust payment amounts supplied by the browser.
+     */
+    const { data: registrationInfo, error: registrationInfoError } =
+      await adminSupabase
+        .from("registration_information")
+        .select(
+          "registration_fee, yellow_kit_fee, luminous_kit_fee, monthly_training_fee"
+        )
+        .order("id", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+
+    if (registrationInfoError || !registrationInfo) {
+      console.error(
+        "Registration information error:",
+        registrationInfoError
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Unable to load the academy payment fees.",
+        },
+        { status: 500 }
+      );
+    }
+
+    const registrationFee = selectedItems.includes("registration_fee")
+      ? Number(registrationInfo.registration_fee)
+      : 0;
+
+    const yellowKitFee = selectedItems.includes("yellow_kit")
+      ? Number(registrationInfo.yellow_kit_fee)
+      : 0;
+
+    const luminousKitFee = selectedItems.includes("luminous_kit")
+      ? Number(registrationInfo.luminous_kit_fee)
+      : 0;
+
+    const monthlyTrainingFee = selectedItems.includes("monthly_training")
+      ? Number(registrationInfo.monthly_training_fee)
+      : 0;
+
+    const amountExpected =
+      registrationFee +
+      yellowKitFee +
+      luminousKitFee +
+      monthlyTrainingFee;
+
+    if (!Number.isFinite(amountExpected) || amountExpected <= 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "The selected payment amount is invalid.",
+        },
+        { status: 400 }
+      );
+    }
+
+    /*
+     * Read M-Pesa configuration from server-only environment variables.
+     */
+    const consumerKey = process.env.MPESA_CONSUMER_KEY;
+    const consumerSecret = process.env.MPESA_CONSUMER_SECRET;
+    const shortcode = process.env.MPESA_SHORTCODE;
+    const passkey = process.env.MPESA_PASSKEY;
+    const callbackUrl = process.env.MPESA_CALLBACK_URL;
+    const environment = process.env.MPESA_ENVIRONMENT || "sandbox";
+
+    if (
+      !consumerKey ||
+      !consumerSecret ||
+      !shortcode ||
+      !passkey
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "M-Pesa server configuration is incomplete.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!callbackUrl) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "M-Pesa callback URL has not been configured yet.",
+        },
+        { status: 500 }
+      );
+    }
+
+    if (
+      !callbackUrl.startsWith("https://") &&
+      environment === "production"
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Production M-Pesa callback URL must use HTTPS.",
+        },
+        { status: 500 }
+      );
+    }
+
+    /*
+     * Create a payment record before requesting the STK Push.
+     *
+     * This allows the Safaricom callback to update the same transaction.
+     */
+    const { data: payment, error: paymentError } =
+      await adminSupabase
+        .from("registration_payments")
+        .insert({
+          registration_id: registrationId,
+          player_name: playerName,
+          phone_number: formattedPhone,
+          payment_items: selectedItems,
+
+          registration_fee: registrationFee,
+          yellow_kit_fee: yellowKitFee,
+          luminous_kit_fee: luminousKitFee,
+          monthly_training_fee: monthlyTrainingFee,
+
+          amount_expected: amountExpected,
+          amount_paid: 0,
+          status: "Pending",
+        })
+        .select("id")
+        .single();
+
+    if (paymentError || !payment) {
+      console.error(
+        "Payment record creation error:",
+        paymentError
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Unable to create the payment record.",
+        },
+        { status: 500 }
+      );
+    }
+
+    paymentId = String(payment.id);
+
+    const baseUrl =
+      environment === "production"
+        ? "https://api.safaricom.co.ke"
+        : "https://sandbox.safaricom.co.ke";
+
+    /*
+     * SANDBOX SAFETY
+     *
+     * While testing, Daraja receives KSh 1.
+     *
+     * Supabase still records the real academy amountExpected.
+     *
+     * In production the calculated academy amount will be sent.
+     */
+    const mpesaAmount =
+      environment === "sandbox"
+        ? 1
+        : Math.round(amountExpected);
+
+    const timestamp = generateTimestamp();
+
+    const password = Buffer.from(
+      `${shortcode}${passkey}${timestamp}`
+    ).toString("base64");
+
+    const accessToken = await getAccessToken(
+      baseUrl,
+      consumerKey,
+      consumerSecret
+    );
+
+    const response = await fetch(
+      `${baseUrl}/mpesa/stkpush/v1/processrequest`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          BusinessShortCode: shortcode,
+          Password: password,
+          Timestamp: timestamp,
+
+          TransactionType: "CustomerBuyGoodsOnline",
+
+          Amount: mpesaAmount,
+
+          PartyA: formattedPhone,
+          PartyB: shortcode,
+          PhoneNumber: formattedPhone,
+
+          CallBackURL: callbackUrl,
+
+          AccountReference: "NasraSantosFA",
+          TransactionDesc: "Academy Payment",
+        }),
+        cache: "no-store",
+      }
+    );
+
+    const data = (await response.json()) as StkPushResponse;
+
+    if (!response.ok || data.ResponseCode !== "0") {
+      console.error("STK Push request failed:", {
+        status: response.status,
+        errorCode: data.errorCode,
+        errorMessage: data.errorMessage,
+        responseCode: data.ResponseCode,
+        responseDescription: data.ResponseDescription,
+      });
+
+      const failureMessage =
+        data.errorMessage ||
+        data.ResponseDescription ||
+        "Safaricom rejected the STK Push request.";
+
+      await adminSupabase
+        .from("registration_payments")
+        .update({
+          status: "Failed",
+          result_description: failureMessage,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", paymentId);
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: failureMessage,
+        },
+        {
+          status:
+            response.status >= 400
+              ? response.status
+              : 400,
+        }
+      );
+    }
+
+    if (!data.CheckoutRequestID || !data.MerchantRequestID) {
+      await adminSupabase
+        .from("registration_payments")
+        .update({
+          status: "Failed",
+          result_description:
+            "Safaricom did not return the expected STK request IDs.",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", paymentId);
+
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Safaricom did not return the expected STK request IDs.",
+        },
+        { status: 502 }
+      );
+    }
+
+    /*
+     * Save Safaricom request IDs.
+     *
+     * CheckoutRequestID will later be used to match the callback
+     * with this payment transaction.
+     */
+    const { error: updateError } = await adminSupabase
+      .from("registration_payments")
+      .update({
+        checkout_request_id: data.CheckoutRequestID,
+        merchant_request_id: data.MerchantRequestID,
+        result_description:
+          data.CustomerMessage ||
+          data.ResponseDescription ||
+          "STK Push initiated.",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", paymentId);
+
+    if (updateError) {
+      console.error(
+        "Unable to save STK request IDs:",
+        updateError
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message:
+        data.CustomerMessage ||
+        "M-Pesa payment prompt sent successfully.",
+
+      paymentId,
+      checkoutRequestId: data.CheckoutRequestID,
+      selectedItems,
+      amountExpected,
+
+      /*
+       * Development information only.
+       * In sandbox this should be KSh 1.
+       */
+      mpesaTestAmount: mpesaAmount,
+
+      environment,
+    });
+  } catch (error) {
+    console.error("STK Push API error:", error);
+
+    const errorMessage =
+      error instanceof Error
+        ? error.message
+        : "Unable to initiate M-Pesa payment.";
+
+    if (paymentId) {
+      try {
+        await adminSupabase
+          .from("registration_payments")
+          .update({
+            status: "Failed",
+            result_description: errorMessage,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", paymentId);
+      } catch (updateError) {
+        console.error(
+          "Unable to mark payment as failed:",
+          updateError
+        );
+      }
+    }
+
+    return NextResponse.json(
+      {
+        success: false,
+        message: errorMessage,
+      },
+      { status: 500 }
+    );
+  }
+}
