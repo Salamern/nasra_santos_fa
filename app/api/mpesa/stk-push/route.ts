@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,14 @@ const ALLOWED_ITEMS = [
 ] as const;
 
 type PaymentItem = (typeof ALLOWED_ITEMS)[number];
+
+type ExistingPayment = {
+  id: string;
+  payment_items: string[] | null;
+  status: string | null;
+  checkout_request_id: string | null;
+  created_at: string | null;
+};
 
 type DarajaTokenResponse = {
   access_token?: string;
@@ -46,6 +55,45 @@ function formatPhoneNumber(phone: string): string {
   }
 
   return cleaned;
+}
+
+function formatPaymentItem(item: PaymentItem): string {
+  switch (item) {
+    case "registration_fee":
+      return "Registration Fee";
+
+    case "yellow_kit":
+      return "Yellow Kit";
+
+    case "luminous_kit":
+      return "Luminous Kit";
+
+    case "monthly_training":
+      return "Monthly Training";
+
+    default:
+      return item;
+  }
+}
+
+function samePaymentItems(
+  existingItems: string[] | null,
+  selectedItems: PaymentItem[]
+): boolean {
+  if (!Array.isArray(existingItems)) {
+    return false;
+  }
+
+  const normalizedExisting = Array.from(new Set(existingItems)).sort();
+  const normalizedSelected = Array.from(new Set(selectedItems)).sort();
+
+  if (normalizedExisting.length !== normalizedSelected.length) {
+    return false;
+  }
+
+  return normalizedExisting.every(
+    (item, index) => item === normalizedSelected[index]
+  );
 }
 
 // Daraja expects timestamp in Kenya/East Africa Time (UTC+3)
@@ -202,6 +250,150 @@ export async function POST(request: Request) {
         },
         { status: 400 }
       );
+    }
+
+    /*
+      DUPLICATE PAYMENT PROTECTION
+
+      Strong duplicate protection is applied when the payment belongs
+      to a real registration.
+
+      1. If any selected item has already been Paid for this registration,
+         another STK Push is blocked.
+
+      2. If the exact same item selection already has a recent Pending
+         payment attempt, another STK Push is blocked temporarily.
+
+      Old failed/cancelled attempts do not prevent another attempt.
+    */
+    if (registrationId) {
+      const { data: existingPaymentData, error: existingPaymentError } =
+        await adminSupabase
+          .from("registration_payments")
+          .select(
+            "id, payment_items, status, checkout_request_id, created_at"
+          )
+          .eq("registration_id", registrationId)
+          .in("status", ["Paid", "Pending"])
+          .order("created_at", { ascending: false });
+
+      if (existingPaymentError) {
+        console.error(
+          "Duplicate payment lookup error:",
+          existingPaymentError
+        );
+
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              "Unable to verify the registration payment history. Please try again.",
+          },
+          { status: 500 }
+        );
+      }
+
+      const existingPayments =
+        (existingPaymentData ?? []) as ExistingPayment[];
+
+      const paidItems = new Set<PaymentItem>();
+
+      for (const existingPayment of existingPayments) {
+        if (existingPayment.status !== "Paid") {
+          continue;
+        }
+
+        const items = Array.isArray(existingPayment.payment_items)
+          ? existingPayment.payment_items
+          : [];
+
+        for (const item of items) {
+          if (isPaymentItem(item)) {
+            paidItems.add(item);
+          }
+        }
+      }
+
+      const alreadyPaidItems = selectedItems.filter((item) =>
+        paidItems.has(item)
+      );
+
+      if (alreadyPaidItems.length > 0) {
+        const readableItems = alreadyPaidItems
+          .map(formatPaymentItem)
+          .join(", ");
+
+        return NextResponse.json(
+          {
+            success: false,
+            code: "ITEMS_ALREADY_PAID",
+            message:
+              alreadyPaidItems.length === 1
+                ? `${readableItems} has already been paid for this registration.`
+                : `${readableItems} have already been paid for this registration.`,
+            alreadyPaidItems,
+          },
+          { status: 409 }
+        );
+      }
+
+      /*
+        Pending attempts are blocked for 5 minutes.
+
+        This protects against accidental double-clicks or a parent
+        pressing Pay again while the original STK prompt is still active.
+
+        An old Pending record will not permanently lock the registration.
+      */
+      const pendingProtectionWindowMs = 5 * 60 * 1000;
+      const pendingCutoff =
+        Date.now() - pendingProtectionWindowMs;
+
+      const matchingPendingPayment = existingPayments.find(
+        (existingPayment) => {
+          if (existingPayment.status !== "Pending") {
+            return false;
+          }
+
+          if (
+            !samePaymentItems(
+              existingPayment.payment_items,
+              selectedItems
+            )
+          ) {
+            return false;
+          }
+
+          if (!existingPayment.created_at) {
+            return false;
+          }
+
+          const createdAt = new Date(
+            existingPayment.created_at
+          ).getTime();
+
+          if (Number.isNaN(createdAt)) {
+            return false;
+          }
+
+          return createdAt >= pendingCutoff;
+        }
+      );
+
+      if (matchingPendingPayment) {
+        return NextResponse.json(
+          {
+            success: false,
+            code: "PAYMENT_ALREADY_PENDING",
+            message:
+              "An M-Pesa payment request for these items is already pending. Complete the existing M-Pesa prompt or wait a few minutes before trying again.",
+            paymentId: matchingPendingPayment.id,
+            checkoutRequestId:
+              matchingPendingPayment.checkout_request_id,
+          },
+          { status: 409 }
+        );
+      }
     }
 
     // Load the academy's current fees directly from Supabase.
@@ -376,12 +568,11 @@ export async function POST(request: Request) {
     );
 
     /*
-      This matches the successful Safaricom sandbox simulator:
+      This matches the successful Safaricom sandbox configuration.
 
-      BusinessShortCode: 174379
       TransactionType: CustomerPayBillOnline
       Amount: 1 in sandbox
-      PartyB: sandbox shortcode
+      PartyB: configured sandbox shortcode
 
       IMPORTANT:
       Never log Password, Passkey, Consumer Key,
