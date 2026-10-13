@@ -1,5 +1,5 @@
+import { createHash, randomBytes } from "crypto";
 import { NextResponse } from "next/server";
-
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -94,6 +94,14 @@ function samePaymentItems(
   return normalizedExisting.every(
     (item, index) => item === normalizedSelected[index]
   );
+}
+
+function createPaymentStatusToken() {
+  return randomBytes(32).toString("hex");
+}
+
+function hashPaymentStatusToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
 }
 
 // Daraja expects timestamp in Kenya/East Africa Time (UTC+3)
@@ -255,16 +263,9 @@ export async function POST(request: Request) {
     /*
       DUPLICATE PAYMENT PROTECTION
 
-      Strong duplicate protection is applied when the payment belongs
-      to a real registration.
-
-      1. If any selected item has already been Paid for this registration,
-         another STK Push is blocked.
-
-      2. If the exact same item selection already has a recent Pending
-         payment attempt, another STK Push is blocked temporarily.
-
-      Old failed/cancelled attempts do not prevent another attempt.
+      1. Block items already marked Paid for this registration.
+      2. Block an identical recent Pending attempt for five minutes.
+      3. Failed and Cancelled attempts can be retried.
     */
     if (registrationId) {
       const { data: existingPaymentData, error: existingPaymentError } =
@@ -337,14 +338,6 @@ export async function POST(request: Request) {
         );
       }
 
-      /*
-        Pending attempts are blocked for 5 minutes.
-
-        This protects against accidental double-clicks or a parent
-        pressing Pay again while the original STK prompt is still active.
-
-        An old Pending record will not permanently lock the registration.
-      */
       const pendingProtectionWindowMs = 5 * 60 * 1000;
       const pendingCutoff =
         Date.now() - pendingProtectionWindowMs;
@@ -381,6 +374,13 @@ export async function POST(request: Request) {
       );
 
       if (matchingPendingPayment) {
+        /*
+          We deliberately do NOT return a status token here.
+
+          Only a hash is stored in the database, so the server cannot
+          recover the original token for an old request. The browser
+          that created the payment should already possess its token.
+        */
         return NextResponse.json(
           {
             success: false,
@@ -396,8 +396,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // Load the academy's current fees directly from Supabase.
-    // The browser does not decide the amount.
+    // Load current academy fees from the server-side database.
     const { data: registrationInfo, error: registrationInfoError } =
       await adminSupabase
         .from("registration_information")
@@ -455,7 +454,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Server-only M-Pesa environment variables.
     const consumerKey = process.env.MPESA_CONSUMER_KEY;
     const consumerSecret = process.env.MPESA_CONSUMER_SECRET;
     const shortcode = process.env.MPESA_SHORTCODE;
@@ -502,6 +500,16 @@ export async function POST(request: Request) {
       );
     }
 
+    /*
+      Generate a private status token.
+
+      The browser receives the original token.
+      Supabase stores only the SHA-256 hash.
+    */
+    const paymentStatusToken = createPaymentStatusToken();
+    const paymentStatusTokenHash =
+      hashPaymentStatusToken(paymentStatusToken);
+
     // Create our payment record before sending the STK request.
     const { data: payment, error: paymentError } =
       await adminSupabase
@@ -520,6 +528,8 @@ export async function POST(request: Request) {
           amount_expected: amountExpected,
           amount_paid: 0,
           status: "Pending",
+
+          payment_status_token_hash: paymentStatusTokenHash,
         })
         .select("id")
         .single();
@@ -547,7 +557,7 @@ export async function POST(request: Request) {
         : "https://sandbox.safaricom.co.ke";
 
     // During sandbox testing we only request KSh 1.
-    // The real academy amount is still stored in amountExpected.
+    // The academy amount remains stored in amount_expected.
     const mpesaAmount =
       environment === "sandbox"
         ? 1
@@ -555,8 +565,6 @@ export async function POST(request: Request) {
 
     const timestamp = generateTimestamp();
 
-    // Daraja STK password:
-    // Base64(BusinessShortCode + Passkey + Timestamp)
     const password = Buffer.from(
       `${shortcode}${passkey}${timestamp}`
     ).toString("base64");
@@ -566,18 +574,6 @@ export async function POST(request: Request) {
       consumerKey,
       consumerSecret
     );
-
-    /*
-      This matches the successful Safaricom sandbox configuration.
-
-      TransactionType: CustomerPayBillOnline
-      Amount: 1 in sandbox
-      PartyB: configured sandbox shortcode
-
-      IMPORTANT:
-      Never log Password, Passkey, Consumer Key,
-      Consumer Secret or Access Token.
-    */
 
     const stkRequestBody = {
       BusinessShortCode: shortcode,
@@ -714,7 +710,10 @@ export async function POST(request: Request) {
       message:
         data.CustomerMessage ||
         "M-Pesa payment prompt sent successfully.",
+
       paymentId,
+      paymentStatusToken,
+
       checkoutRequestId: data.CheckoutRequestID,
       selectedItems,
       amountExpected,

@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from "crypto";
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -12,16 +13,40 @@ function getMpesaBaseUrl() {
 }
 
 function generateTimestamp() {
-  const now = new Date();
+  const kenyaTime = new Date(Date.now() + 3 * 60 * 60 * 1000);
 
-  const year = now.getFullYear().toString();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  const hours = String(now.getHours()).padStart(2, "0");
-  const minutes = String(now.getMinutes()).padStart(2, "0");
-  const seconds = String(now.getSeconds()).padStart(2, "0");
+  const year = kenyaTime.getUTCFullYear();
+  const month = String(kenyaTime.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(kenyaTime.getUTCDate()).padStart(2, "0");
+  const hours = String(kenyaTime.getUTCHours()).padStart(2, "0");
+  const minutes = String(kenyaTime.getUTCMinutes()).padStart(2, "0");
+  const seconds = String(kenyaTime.getUTCSeconds()).padStart(2, "0");
 
   return `${year}${month}${day}${hours}${minutes}${seconds}`;
+}
+
+function hashPaymentStatusToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
+
+function tokensMatch(
+  suppliedToken: string,
+  storedTokenHash: string
+): boolean {
+  try {
+    const suppliedHash = hashPaymentStatusToken(suppliedToken);
+
+    const suppliedBuffer = Buffer.from(suppliedHash, "hex");
+    const storedBuffer = Buffer.from(storedTokenHash, "hex");
+
+    if (suppliedBuffer.length !== storedBuffer.length) {
+      return false;
+    }
+
+    return timingSafeEqual(suppliedBuffer, storedBuffer);
+  } catch {
+    return false;
+  }
 }
 
 async function getAccessToken() {
@@ -52,8 +77,16 @@ async function getAccessToken() {
   const data = await response.json();
 
   if (!response.ok || !data.access_token) {
-    console.error("Daraja access token error:", data);
-    throw new Error("Unable to authenticate with Safaricom Daraja.");
+    console.error("Daraja access token error:", {
+      status: response.status,
+      errorCode: data.errorCode,
+      errorMessage: data.errorMessage,
+    });
+
+    throw new Error(
+      data.errorMessage ||
+        "Unable to authenticate with Safaricom Daraja."
+    );
   }
 
   return String(data.access_token);
@@ -61,9 +94,33 @@ async function getAccessToken() {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
+    const body: unknown = await request.json();
 
-    const paymentId = String(body.paymentId || "").trim();
+    if (
+      typeof body !== "object" ||
+      body === null ||
+      Array.isArray(body)
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Invalid request body.",
+        },
+        { status: 400 }
+      );
+    }
+
+    const requestBody = body as Record<string, unknown>;
+
+    const paymentId =
+      typeof requestBody.paymentId === "string"
+        ? requestBody.paymentId.trim()
+        : "";
+
+    const paymentStatusToken =
+      typeof requestBody.paymentStatusToken === "string"
+        ? requestBody.paymentStatusToken.trim()
+        : "";
 
     if (!paymentId) {
       return NextResponse.json(
@@ -72,6 +129,26 @@ export async function POST(request: Request) {
           message: "Payment ID is required.",
         },
         { status: 400 }
+      );
+    }
+
+    if (!paymentStatusToken) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Payment status authorization is required.",
+        },
+        { status: 401 }
+      );
+    }
+
+    if (!/^[a-f0-9]{64}$/i.test(paymentStatusToken)) {
+      return NextResponse.json(
+        {
+          success: false,
+          message: "Invalid payment status authorization.",
+        },
+        { status: 401 }
       );
     }
 
@@ -100,7 +177,8 @@ export async function POST(request: Request) {
             status,
             checkout_request_id,
             result_code,
-            result_description
+            result_description,
+            payment_status_token_hash
           `
         )
         .eq("id", paymentId)
@@ -115,22 +193,39 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           success: false,
-          message: "Unable to find the payment record.",
+          message: "Unable to check the payment.",
         },
         { status: 500 }
       );
     }
 
-    if (!payment) {
+    /*
+      Do not reveal whether a payment ID exists.
+
+      A missing payment, missing token hash or incorrect token all
+      receive the same authorization response.
+    */
+    if (
+      !payment ||
+      !payment.payment_status_token_hash ||
+      !tokensMatch(
+        paymentStatusToken,
+        String(payment.payment_status_token_hash)
+      )
+    ) {
       return NextResponse.json(
         {
           success: false,
-          message: "Payment record was not found.",
+          message: "Invalid payment status authorization.",
         },
-        { status: 404 }
+        { status: 401 }
       );
     }
 
+    /*
+      If our database already has a final status, there is no need
+      to contact Safaricom again.
+    */
     if (payment.status === "Paid") {
       return NextResponse.json({
         success: true,
@@ -199,11 +294,19 @@ export async function POST(request: Request) {
 
     const darajaResult = await darajaResponse.json();
 
+    /*
+      A temporary Daraja query error must NOT automatically change
+      the database payment to Failed.
+
+      The original STK transaction may still be active or its
+      callback may still arrive.
+    */
     if (!darajaResponse.ok) {
-      console.error(
-        "Daraja STK query HTTP error:",
-        darajaResult
-      );
+      console.error("Daraja STK query HTTP error:", {
+        status: darajaResponse.status,
+        errorCode: darajaResult.errorCode,
+        errorMessage: darajaResult.errorMessage,
+      });
 
       return NextResponse.json(
         {
@@ -230,18 +333,13 @@ export async function POST(request: Request) {
       "Safaricom returned a payment status update.";
 
     /*
-     * ResultCode 0 means the transaction completed successfully.
-     *
-     * IMPORTANT:
-     * STK Query does not give us the full transaction metadata
-     * that the normal callback provides, such as the M-Pesa
-     * receipt number and exact paid amount.
-     *
-     * Therefore, when ResultCode is 0 we do NOT manufacture a
-     * receipt number or amount. We mark the record Paid based on
-     * Safaricom's direct STK Query confirmation and preserve any
-     * callback metadata that may already exist.
-     */
+      ResultCode 0 means Safaricom confirms that the transaction
+      completed successfully.
+
+      The normal callback normally supplies additional metadata such
+      as the receipt number and paid amount. STK Query may not provide
+      all of that callback metadata, so we never invent those values.
+    */
     if (resultCode === 0) {
       const { error: updateError } = await adminSupabase
         .from("registration_payments")
@@ -282,14 +380,10 @@ export async function POST(request: Request) {
     }
 
     /*
-     * Common M-Pesa STK final result codes:
-     *
-     * 1032 = user cancelled the request.
-     *
-     * Other non-zero ResultCodes represent an unsuccessful
-     * transaction. We store them as Failed unless the code is
-     * specifically recognised as a cancellation.
-     */
+      ResultCode 1032 is the common user-cancelled STK result.
+
+      Other non-zero final result codes are recorded as Failed.
+    */
     if (resultCode !== null) {
       const finalStatus =
         resultCode === 1032 ? "Cancelled" : "Failed";

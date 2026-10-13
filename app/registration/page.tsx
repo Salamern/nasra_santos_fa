@@ -224,6 +224,8 @@ export default function RegistrationPage() {
 
   const [paymentId, setPaymentId] = useState("");
 
+  const [paymentStatusToken, setPaymentStatusToken] = useState("");
+
   const [checkoutRequestId, setCheckoutRequestId] = useState("");
 
 
@@ -622,235 +624,122 @@ export default function RegistrationPage() {
 
 
 
-  async function checkPaymentStatus(currentPaymentId?: string) {
-
+  async function checkPaymentStatus(
+    currentPaymentId?: string,
+    currentPaymentStatusToken?: string
+  ) {
     const idToCheck = currentPaymentId || paymentId;
+    const tokenToUse = currentPaymentStatusToken || paymentStatusToken;
 
+    if (!idToCheck) return;
 
-
-    if (!idToCheck) {
-
+    if (!tokenToUse) {
+      setPaymentTimedOut(true);
+      setPaymentMessage("");
+      setPaymentError(
+        "This payment session cannot be checked securely. Please wait a few minutes, then start a new M-Pesa payment attempt."
+      );
       return;
-
     }
-
-
 
     try {
-
       setCheckingPayment(true);
-
-
-
       const response = await fetch(
-
-        `/api/mpesa/payment-status/${encodeURIComponent(idToCheck)}`,
-
-        {
-
-          method: "GET",
-
-          cache: "no-store",
-
-        }
-
+        `/api/mpesa/payment-status/${encodeURIComponent(idToCheck)}?token=${encodeURIComponent(tokenToUse)}`,
+        { method: "GET", cache: "no-store" }
       );
-
-
-
-      const result =
-
-        (await response.json()) as PaymentStatusResponse;
-
-
-
+      const result = (await response.json()) as PaymentStatusResponse;
       if (!response.ok || !result.success || !result.payment) {
-
-        throw new Error(
-
-          result.message || "Unable to check payment status."
-
-        );
-
+        throw new Error(result.message || "Unable to check payment status.");
       }
-
-
-
       const payment = result.payment;
-
-
-
       setPaymentStatus(payment.status);
-
       setAmountPaid(payment.amountPaid || 0);
-
       setMpesaReceiptNumber(payment.mpesaReceiptNumber || "");
-
       setTransactionDate(payment.transactionDate || "");
 
-
-
       if (payment.status === "Paid") {
-
         stopPaymentPolling();
         setPaymentTimedOut(false);
-
-
-
         setPaymentError("");
-
-        setPaymentMessage(
-
-          payment.resultDescription ||
-
-            "M-Pesa payment confirmed successfully."
-
-        );
-
-
-
+        setPaymentMessage(payment.resultDescription || "M-Pesa payment confirmed successfully.");
         return;
-
       }
-
-
-
       if (payment.status === "Cancelled") {
-
         stopPaymentPolling();
         setPaymentTimedOut(false);
-
-
-
         setPaymentMessage("");
-
-        setPaymentError(
-
-          payment.resultDescription ||
-
-            "The M-Pesa payment was cancelled."
-
-        );
-
-
-
+        setPaymentError(payment.resultDescription || "The M-Pesa payment was cancelled.");
         return;
-
       }
-
-
-
       if (payment.status === "Failed") {
-
         stopPaymentPolling();
         setPaymentTimedOut(false);
-
-
-
         setPaymentMessage("");
-
-        setPaymentError(
-
-          payment.resultDescription ||
-
-            "The M-Pesa payment was not completed."
-
-        );
-
-
-
+        setPaymentError(payment.resultDescription || "The M-Pesa payment was not completed.");
         return;
-
       }
-
-
-
       setPaymentStatus("Pending");
-
-      setPaymentMessage(
-
-        "Waiting for Safaricom to confirm the M-Pesa payment..."
-
-      );
-
+      setPaymentMessage("Waiting for Safaricom to confirm the M-Pesa payment...");
     } catch (error) {
-
       console.error("Payment status check error:", error);
-
     } finally {
-
       setCheckingPayment(false);
-
     }
-
   }
 
-
-
-  async function querySafaricomPaymentStatus(currentPaymentId: string) {
+  async function querySafaricomPaymentStatus(
+    currentPaymentId: string,
+    currentPaymentStatusToken?: string
+  ) {
+    const tokenToUse = currentPaymentStatusToken || paymentStatusToken;
+    if (!tokenToUse) {
+      setPaymentTimedOut(true);
+      setPaymentMessage("");
+      setPaymentError("This payment session cannot be checked securely. Please wait a few minutes, then start a new M-Pesa payment attempt.");
+      return;
+    }
     try {
       setCheckingPayment(true);
       const response = await fetch("/api/mpesa/stk-query", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ paymentId: currentPaymentId }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentId: currentPaymentId, paymentStatusToken: tokenToUse }),
         cache: "no-store",
       });
-
       const result = await response.json();
-
       if (!response.ok || !result.success) {
         setPaymentTimedOut(true);
-        setPaymentMessage(
-          result.message ||
-            "Payment confirmation is taking longer than expected. You can check the payment status again below."
-        );
+        setPaymentMessage(result.message || "Payment confirmation is taking longer than expected. You can check the payment status again below.");
         return;
       }
-
       if (result.final) {
-        await checkPaymentStatus(currentPaymentId);
+        await checkPaymentStatus(currentPaymentId, tokenToUse);
         return;
       }
-
       setPaymentTimedOut(true);
       setPaymentStatus("Pending");
-      setPaymentMessage(
-        result.message ||
-          "Safaricom has not returned a final payment result yet. You can check the status again or safely retry after a few minutes."
-      );
+      setPaymentMessage(result.message || "Safaricom has not returned a final payment result yet. You can check the status again or safely retry after a few minutes.");
     } catch (error) {
       console.error("Safaricom STK query error:", error);
       setPaymentTimedOut(true);
-      setPaymentMessage(
-        "Payment confirmation is taking longer than expected. You can check the payment status again below."
-      );
+      setPaymentMessage("Payment confirmation is taking longer than expected. You can check the payment status again below.");
     } finally {
       setCheckingPayment(false);
     }
   }
 
-  function startPaymentPolling(currentPaymentId: string) {
+  function startPaymentPolling(currentPaymentId: string, currentPaymentStatusToken: string) {
     stopPaymentPolling();
-
     pollCountRef.current = 0;
     setPaymentTimedOut(false);
-
     pollingRef.current = setInterval(() => {
       pollCountRef.current += 1;
-
-      void checkPaymentStatus(currentPaymentId);
-
+      void checkPaymentStatus(currentPaymentId, currentPaymentStatusToken);
       if (pollCountRef.current >= 40) {
         stopPaymentPolling();
-
-        setPaymentMessage(
-          "Automatic confirmation is taking longer than expected. Checking directly with Safaricom..."
-        );
-
-        void querySafaricomPaymentStatus(currentPaymentId);
+        setPaymentMessage("Automatic confirmation is taking longer than expected. Checking directly with Safaricom...");
+        void querySafaricomPaymentStatus(currentPaymentId, currentPaymentStatusToken);
       }
     }, 3000);
   }
@@ -965,13 +854,22 @@ export default function RegistrationPage() {
           setPaymentId(existingPaymentId);
           setCheckoutRequestId(existingCheckoutRequestId);
           setPaymentStatus("Pending");
-          setPaymentTimedOut(false);
-          setPaymentError("");
-          setPaymentMessage(
-            "An M-Pesa request for these fees is already pending. We have resumed checking the existing payment instead of creating a duplicate."
-          );
 
-          startPaymentPolling(existingPaymentId);
+          if (paymentId === existingPaymentId && paymentStatusToken) {
+            setPaymentTimedOut(false);
+            setPaymentError("");
+            setPaymentMessage(
+              "An M-Pesa request for these fees is already pending. We have resumed checking the existing payment instead of creating a duplicate."
+            );
+            startPaymentPolling(existingPaymentId, paymentStatusToken);
+          } else {
+            stopPaymentPolling();
+            setPaymentTimedOut(true);
+            setPaymentMessage("");
+            setPaymentError(
+              "An M-Pesa request for these fees is already pending. For security, this browser cannot reopen an older payment session without its private status token. Complete the existing phone prompt, or wait a few minutes before trying again."
+            );
+          }
           return;
         }
 
@@ -985,6 +883,10 @@ export default function RegistrationPage() {
 
       const newPaymentId = String(result.paymentId || "");
 
+      const newPaymentStatusToken = String(
+        result.paymentStatusToken || ""
+      );
+
       const newCheckoutRequestId = String(
 
         result.checkoutRequestId || ""
@@ -993,11 +895,11 @@ export default function RegistrationPage() {
 
 
 
-      if (!newPaymentId) {
+      if (!newPaymentId || !newPaymentStatusToken) {
 
         throw new Error(
 
-          "M-Pesa accepted the request, but the payment reference is missing."
+          "M-Pesa accepted the request, but the secure payment reference is missing."
 
         );
 
@@ -1006,6 +908,8 @@ export default function RegistrationPage() {
 
 
       setPaymentId(newPaymentId);
+
+      setPaymentStatusToken(newPaymentStatusToken);
 
       setCheckoutRequestId(newCheckoutRequestId);
 
@@ -1022,7 +926,7 @@ export default function RegistrationPage() {
 
 
 
-      startPaymentPolling(newPaymentId);
+      startPaymentPolling(newPaymentId, newPaymentStatusToken);
 
     } catch (error) {
 
@@ -1074,6 +978,8 @@ export default function RegistrationPage() {
 
 
     setPaymentId("");
+
+    setPaymentStatusToken("");
 
     setCheckoutRequestId("");
 
@@ -1922,6 +1828,8 @@ export default function RegistrationPage() {
                       setPaymentStatus("Not Started");
 
                       setPaymentId("");
+
+                      setPaymentStatusToken("");
 
                       setCheckoutRequestId("");
 
