@@ -7,11 +7,12 @@ export const dynamic = "force-dynamic";
 export default async function AdminPage() {
   const supabase = createAdminClient();
 
-  const { data, error } = await supabase
+  // Registration statistics
+  const { data: registrationData, error: registrationError } = await supabase
     .from("registrations")
     .select("status");
 
-  const registrations = data ?? [];
+  const registrations = registrationData ?? [];
 
   const total = registrations.length;
 
@@ -29,6 +30,35 @@ export default async function AdminPage() {
     (registration) => registration.status?.toLowerCase() === "rejected"
   ).length;
 
+  // M-Pesa payment statistics
+  const { data: paymentData, error: paymentError } = await supabase
+    .from("registration_payments")
+    .select("status, amount_expected, amount_paid");
+
+  const payments = paymentData ?? [];
+
+  const totalPayments = payments.length;
+
+  const paidPayments = payments.filter(
+    (payment) => payment.status?.toLowerCase() === "paid"
+  );
+
+  const pendingPayments = payments.filter(
+    (payment) => payment.status?.toLowerCase() === "pending"
+  ).length;
+
+  const academyPaymentValue = paidPayments.reduce(
+    (totalAmount, payment) =>
+      totalAmount + Number(payment.amount_expected ?? 0),
+    0
+  );
+
+  const sandboxAmountPaid = paidPayments.reduce(
+    (totalAmount, payment) =>
+      totalAmount + Number(payment.amount_paid ?? 0),
+    0
+  );
+
   return (
     <main className="min-h-screen bg-slate-100 px-5 py-10">
       <div className="mx-auto max-w-6xl">
@@ -45,8 +75,8 @@ export default async function AdminPage() {
               </h1>
 
               <p className="mt-4 max-w-2xl leading-7 text-slate-300">
-                Manage academy registrations, fixtures, results and website
-                information from one place.
+                Manage academy registrations, M-Pesa payments, fixtures,
+                results and website information from one place.
               </p>
             </div>
 
@@ -62,9 +92,10 @@ export default async function AdminPage() {
         </div>
 
         {/* Database Error */}
-        {error && (
+        {(registrationError || paymentError) && (
           <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-5 text-sm font-bold text-red-700">
-            Could not load registration statistics.
+            Some dashboard statistics could not be loaded. Please refresh the
+            page or check the database connection.
           </div>
         )}
 
@@ -86,8 +117,59 @@ export default async function AdminPage() {
           </div>
         </section>
 
+        {/* Payment Statistics */}
+        <section className="mt-8">
+          <p className="text-xs font-black uppercase tracking-[0.2em] text-sky-500">
+            M-Pesa Overview
+          </p>
+
+          <h2 className="mt-2 text-2xl font-black uppercase text-blue-950">
+            Registration Payments
+          </h2>
+
+          <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <PaymentStatCard
+              title="Payment Records"
+              value={totalPayments.toString()}
+            />
+
+            <PaymentStatCard
+              title="Paid"
+              value={paidPayments.length.toString()}
+            />
+
+            <PaymentStatCard
+              title="Pending"
+              value={pendingPayments.toString()}
+            />
+
+            <PaymentStatCard
+              title="Academy Value"
+              value={`KSh ${academyPaymentValue.toLocaleString("en-KE")}`}
+            />
+          </div>
+
+          <div className="mt-4 rounded-2xl border border-blue-200 bg-blue-50 p-4">
+            <p className="text-xs font-black uppercase tracking-wider text-blue-800">
+              Daraja Sandbox
+            </p>
+
+            <p className="mt-1 text-sm text-blue-900">
+              Successful academy payment value:{" "}
+              <span className="font-black">
+                KSh {academyPaymentValue.toLocaleString("en-KE")}
+              </span>
+              {" · "}
+              Actual sandbox amount processed:{" "}
+              <span className="font-black">
+                KSh {sandboxAmountPaid.toLocaleString("en-KE")}
+              </span>
+            </p>
+          </div>
+        </section>
+
         {/* Management Cards */}
-        <div className="mt-8 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-8 grid gap-6 md:grid-cols-2">
           {/* Registrations */}
           <div className="rounded-3xl bg-white p-7 shadow-sm">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-xl">
@@ -99,8 +181,8 @@ export default async function AdminPage() {
             </h2>
 
             <p className="mt-3 min-h-14 text-sm leading-6 text-slate-600">
-              Review player applications, check payment information and manage
-              registration status.
+              Review player applications, player information and manage
+              registration approval status.
             </p>
 
             <div className="mt-6 rounded-2xl bg-sky-50 p-4">
@@ -121,6 +203,40 @@ export default async function AdminPage() {
             </Link>
           </div>
 
+          {/* M-Pesa Payments */}
+          <div className="rounded-3xl border border-emerald-200 bg-white p-7 shadow-sm">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-xl">
+              💳
+            </div>
+
+            <h2 className="mt-5 text-xl font-black uppercase text-blue-950">
+              M-Pesa Payments
+            </h2>
+
+            <p className="mt-3 min-h-14 text-sm leading-6 text-slate-600">
+              Review registration payment attempts, successful M-Pesa
+              confirmations, receipts and transaction information.
+            </p>
+
+            <div className="mt-6 rounded-2xl bg-emerald-50 p-4">
+              <p className="text-xs font-black uppercase tracking-wider text-emerald-700">
+                {paidPayments.length} Paid
+              </p>
+
+              <p className="mt-1 text-sm text-slate-700">
+                {totalPayments} total payment{" "}
+                {totalPayments === 1 ? "record" : "records"}
+              </p>
+            </div>
+
+            <Link
+              href="/admin/payments"
+              className="mt-5 block rounded-xl bg-blue-950 px-5 py-3 text-center text-sm font-black uppercase tracking-wider text-white transition hover:bg-emerald-400 hover:text-blue-950"
+            >
+              Manage M-Pesa Payments
+            </Link>
+          </div>
+
           {/* Fixtures */}
           <div className="rounded-3xl bg-white p-7 shadow-sm">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-sky-100 text-xl">
@@ -132,8 +248,8 @@ export default async function AdminPage() {
             </h2>
 
             <p className="mt-3 min-h-14 text-sm leading-6 text-slate-600">
-              Add upcoming matches and update results that will appear on the
-              public website.
+              Add upcoming matches and update results that appear on the public
+              website.
             </p>
 
             <div className="mt-6 rounded-2xl bg-emerald-50 p-4">
@@ -165,13 +281,13 @@ export default async function AdminPage() {
             </h2>
 
             <p className="mt-3 min-h-14 text-sm leading-6 text-slate-600">
-              Manage selected academy information and website content without
-              editing source code.
+              Manage academy information, contact details, training
+              information, social media and registration settings.
             </p>
 
             <div className="mt-6 rounded-2xl bg-emerald-50 p-4">
               <p className="text-xs font-black uppercase tracking-wider text-emerald-700">
-                System In Development
+                System Active
               </p>
 
               <p className="mt-1 text-sm text-slate-700">
@@ -198,7 +314,7 @@ export default async function AdminPage() {
             Development Progress
           </h2>
 
-          <div className="mt-6 grid gap-4 md:grid-cols-4">
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
             <ProgressCard number="01" title="Secure Admin Login" complete />
 
             <ProgressCard
@@ -216,6 +332,13 @@ export default async function AdminPage() {
             <ProgressCard
               number="04"
               title="Fixtures & Content"
+              complete
+            />
+
+            <ProgressCard
+              number="05"
+              title="M-Pesa Payments"
+              complete
             />
           </div>
         </div>
@@ -238,6 +361,24 @@ function StatCard({
       </p>
 
       <p className="mt-2 text-4xl font-black text-blue-950">{value}</p>
+    </div>
+  );
+}
+
+function PaymentStatCard({
+  title,
+  value,
+}: {
+  title: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+      <p className="text-xs font-black uppercase tracking-widest text-slate-500">
+        {title}
+      </p>
+
+      <p className="mt-2 text-3xl font-black text-blue-950">{value}</p>
     </div>
   );
 }
