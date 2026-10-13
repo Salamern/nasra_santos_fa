@@ -48,15 +48,17 @@ function formatPhoneNumber(phone: string): string {
   return cleaned;
 }
 
+// Daraja expects timestamp in Kenya/East Africa Time (UTC+3)
+// Format: YYYYMMDDHHmmss
 function generateTimestamp(): string {
-  const now = new Date();
+  const kenyaTime = new Date(Date.now() + 3 * 60 * 60 * 1000);
 
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
-  const day = String(now.getDate()).padStart(2, "0");
-  const hours = String(now.getHours()).padStart(2, "0");
-  const minutes = String(now.getMinutes()).padStart(2, "0");
-  const seconds = String(now.getSeconds()).padStart(2, "0");
+  const year = kenyaTime.getUTCFullYear();
+  const month = String(kenyaTime.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(kenyaTime.getUTCDate()).padStart(2, "0");
+  const hours = String(kenyaTime.getUTCHours()).padStart(2, "0");
+  const minutes = String(kenyaTime.getUTCMinutes()).padStart(2, "0");
+  const seconds = String(kenyaTime.getUTCSeconds()).padStart(2, "0");
 
   return `${year}${month}${day}${hours}${minutes}${seconds}`;
 }
@@ -202,11 +204,8 @@ export async function POST(request: Request) {
       );
     }
 
-    /*
-     * Get the official academy prices from Supabase.
-     *
-     * We never trust payment amounts supplied by the browser.
-     */
+    // Load the academy's current fees directly from Supabase.
+    // The browser does not decide the amount.
     const { data: registrationInfo, error: registrationInfoError } =
       await adminSupabase
         .from("registration_information")
@@ -264,9 +263,7 @@ export async function POST(request: Request) {
       );
     }
 
-    /*
-     * Read M-Pesa configuration from server-only environment variables.
-     */
+    // Server-only M-Pesa environment variables.
     const consumerKey = process.env.MPESA_CONSUMER_KEY;
     const consumerSecret = process.env.MPESA_CONSUMER_SECRET;
     const shortcode = process.env.MPESA_SHORTCODE;
@@ -313,11 +310,7 @@ export async function POST(request: Request) {
       );
     }
 
-    /*
-     * Create a payment record before requesting the STK Push.
-     *
-     * This allows the Safaricom callback to update the same transaction.
-     */
+    // Create our payment record before sending the STK request.
     const { data: payment, error: paymentError } =
       await adminSupabase
         .from("registration_payments")
@@ -361,15 +354,8 @@ export async function POST(request: Request) {
         ? "https://api.safaricom.co.ke"
         : "https://sandbox.safaricom.co.ke";
 
-    /*
-     * SANDBOX SAFETY
-     *
-     * While testing, Daraja receives KSh 1.
-     *
-     * Supabase still records the real academy amountExpected.
-     *
-     * In production the calculated academy amount will be sent.
-     */
+    // During sandbox testing we only request KSh 1.
+    // The real academy amount is still stored in amountExpected.
     const mpesaAmount =
       environment === "sandbox"
         ? 1
@@ -377,6 +363,8 @@ export async function POST(request: Request) {
 
     const timestamp = generateTimestamp();
 
+    // Daraja STK password:
+    // Base64(BusinessShortCode + Passkey + Timestamp)
     const password = Buffer.from(
       `${shortcode}${passkey}${timestamp}`
     ).toString("base64");
@@ -387,6 +375,49 @@ export async function POST(request: Request) {
       consumerSecret
     );
 
+    /*
+      This matches the successful Safaricom sandbox simulator:
+
+      BusinessShortCode: 174379
+      TransactionType: CustomerPayBillOnline
+      Amount: 1 in sandbox
+      PartyB: sandbox shortcode
+
+      IMPORTANT:
+      Never log Password, Passkey, Consumer Key,
+      Consumer Secret or Access Token.
+    */
+
+    const stkRequestBody = {
+      BusinessShortCode: shortcode,
+      Password: password,
+      Timestamp: timestamp,
+      TransactionType: "CustomerPayBillOnline",
+      Amount: mpesaAmount,
+      PartyA: formattedPhone,
+      PartyB: shortcode,
+      PhoneNumber: formattedPhone,
+      CallBackURL: callbackUrl,
+      AccountReference: "NasraSantosFA",
+      TransactionDesc: "Academy Payment",
+    };
+
+    // Safe diagnostic information only.
+    // Password and private credentials are deliberately excluded.
+    console.log("Sending Daraja STK Push:", {
+      environment,
+      BusinessShortCode: shortcode,
+      Timestamp: timestamp,
+      TransactionType: stkRequestBody.TransactionType,
+      Amount: mpesaAmount,
+      PartyA: "254*********",
+      PartyB: shortcode,
+      PhoneNumber: "254*********",
+      CallBackURL: callbackUrl,
+      AccountReference: stkRequestBody.AccountReference,
+      TransactionDesc: stkRequestBody.TransactionDesc,
+    });
+
     const response = await fetch(
       `${baseUrl}/mpesa/stkpush/v1/processrequest`,
       {
@@ -395,24 +426,7 @@ export async function POST(request: Request) {
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          BusinessShortCode: shortcode,
-          Password: password,
-          Timestamp: timestamp,
-
-          TransactionType: "CustomerBuyGoodsOnline",
-
-          Amount: mpesaAmount,
-
-          PartyA: formattedPhone,
-          PartyB: shortcode,
-          PhoneNumber: formattedPhone,
-
-          CallBackURL: callbackUrl,
-
-          AccountReference: "NasraSantosFA",
-          TransactionDesc: "Academy Payment",
-        }),
+        body: JSON.stringify(stkRequestBody),
         cache: "no-store",
       }
     );
@@ -477,12 +491,6 @@ export async function POST(request: Request) {
       );
     }
 
-    /*
-     * Save Safaricom request IDs.
-     *
-     * CheckoutRequestID will later be used to match the callback
-     * with this payment transaction.
-     */
     const { error: updateError } = await adminSupabase
       .from("registration_payments")
       .update({
@@ -503,23 +511,23 @@ export async function POST(request: Request) {
       );
     }
 
+    console.log("Daraja STK Push accepted:", {
+      MerchantRequestID: data.MerchantRequestID,
+      CheckoutRequestID: data.CheckoutRequestID,
+      ResponseCode: data.ResponseCode,
+      ResponseDescription: data.ResponseDescription,
+    });
+
     return NextResponse.json({
       success: true,
       message:
         data.CustomerMessage ||
         "M-Pesa payment prompt sent successfully.",
-
       paymentId,
       checkoutRequestId: data.CheckoutRequestID,
       selectedItems,
       amountExpected,
-
-      /*
-       * Development information only.
-       * In sandbox this should be KSh 1.
-       */
       mpesaTestAmount: mpesaAmount,
-
       environment,
     });
   } catch (error) {
