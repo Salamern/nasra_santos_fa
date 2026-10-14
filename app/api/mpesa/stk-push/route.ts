@@ -461,6 +461,19 @@ export async function POST(request: Request) {
     const callbackUrl = process.env.MPESA_CALLBACK_URL;
     const environment = process.env.MPESA_ENVIRONMENT || "sandbox";
 
+    /*
+      CONTROLLED PRODUCTION TEST MODE
+
+      This must be explicitly set to "true".
+      It allows us to perform the first Production transaction
+      using KSh 1 while preserving amount_expected separately.
+
+      After the Production test succeeds, remove this environment
+      variable or set it to false.
+    */
+    const productionTestMode =
+      process.env.MPESA_PRODUCTION_TEST_MODE === "true";
+
     if (
       !consumerKey ||
       !consumerSecret ||
@@ -556,45 +569,57 @@ export async function POST(request: Request) {
         ? "https://api.safaricom.co.ke"
         : "https://sandbox.safaricom.co.ke";
 
-    // During sandbox testing we only request KSh 1.
-    // The academy amount remains stored in amount_expected.
+    /*
+      PAYMENT AMOUNT RULES
+
+      Sandbox:
+        Always request KSh 1.
+
+      Production test mode:
+        Request KSh 1 of REAL money.
+
+      Normal Production:
+        Request the full academy amount.
+    */
     const mpesaAmount =
-      environment === "sandbox"
+      environment === "sandbox" ||
+      (environment === "production" && productionTestMode)
         ? 1
         : Math.round(amountExpected);
-        const { error: mpesaAmountUpdateError } = await adminSupabase
-  .from("registration_payments")
-  .update({
-    mpesa_amount_requested: mpesaAmount,
-    updated_at: new Date().toISOString(),
-  })
-  .eq("id", paymentId);
 
-if (mpesaAmountUpdateError) {
-  console.error(
-    "Unable to save requested M-Pesa amount:",
-    mpesaAmountUpdateError
-  );
+    const { error: mpesaAmountUpdateError } = await adminSupabase
+      .from("registration_payments")
+      .update({
+        mpesa_amount_requested: mpesaAmount,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", paymentId);
 
-  await adminSupabase
-    .from("registration_payments")
-    .update({
-      status: "Failed",
-      result_description:
-        "Unable to save the requested M-Pesa amount.",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", paymentId);
+    if (mpesaAmountUpdateError) {
+      console.error(
+        "Unable to save requested M-Pesa amount:",
+        mpesaAmountUpdateError
+      );
 
-  return NextResponse.json(
-    {
-      success: false,
-      message:
-        "Unable to prepare the M-Pesa payment safely. Please try again.",
-    },
-    { status: 500 }
-  );
-}
+      await adminSupabase
+        .from("registration_payments")
+        .update({
+          status: "Failed",
+          result_description:
+            "Unable to save the requested M-Pesa amount.",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", paymentId);
+
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Unable to prepare the M-Pesa payment safely. Please try again.",
+        },
+        { status: 500 }
+      );
+    }
 
     const timestamp = generateTimestamp();
 
@@ -608,11 +633,18 @@ if (mpesaAmountUpdateError) {
       consumerSecret
     );
 
+    /*
+      IMPORTANT:
+      Nasra Santos uses an M-PESA Buy Goods Till.
+
+      CustomerBuyGoodsOnline is therefore used instead of
+      CustomerPayBillOnline.
+    */
     const stkRequestBody = {
       BusinessShortCode: shortcode,
       Password: password,
       Timestamp: timestamp,
-      TransactionType: "CustomerPayBillOnline",
+      TransactionType: "CustomerBuyGoodsOnline",
       Amount: mpesaAmount,
       PartyA: formattedPhone,
       PartyB: shortcode,
@@ -626,6 +658,7 @@ if (mpesaAmountUpdateError) {
     // Password and private credentials are deliberately excluded.
     console.log("Sending Daraja STK Push:", {
       environment,
+      productionTestMode,
       BusinessShortCode: shortcode,
       Timestamp: timestamp,
       TransactionType: stkRequestBody.TransactionType,
@@ -752,6 +785,7 @@ if (mpesaAmountUpdateError) {
       amountExpected,
       mpesaTestAmount: mpesaAmount,
       environment,
+      productionTestMode,
     });
   } catch (error) {
     console.error("STK Push API error:", error);
