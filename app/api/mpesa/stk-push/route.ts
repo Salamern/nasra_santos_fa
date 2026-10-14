@@ -562,6 +562,39 @@ export async function POST(request: Request) {
       environment === "sandbox"
         ? 1
         : Math.round(amountExpected);
+        const { error: mpesaAmountUpdateError } = await adminSupabase
+  .from("registration_payments")
+  .update({
+    mpesa_amount_requested: mpesaAmount,
+    updated_at: new Date().toISOString(),
+  })
+  .eq("id", paymentId);
+
+if (mpesaAmountUpdateError) {
+  console.error(
+    "Unable to save requested M-Pesa amount:",
+    mpesaAmountUpdateError
+  );
+
+  await adminSupabase
+    .from("registration_payments")
+    .update({
+      status: "Failed",
+      result_description:
+        "Unable to save the requested M-Pesa amount.",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", paymentId);
+
+  return NextResponse.json(
+    {
+      success: false,
+      message:
+        "Unable to prepare the M-Pesa payment safely. Please try again.",
+    },
+    { status: 500 }
+  );
+}
 
     const timestamp = generateTimestamp();
 

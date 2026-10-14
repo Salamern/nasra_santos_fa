@@ -44,7 +44,7 @@ function parseMpesaTransactionDate(
 
   /*
    * M-Pesa transaction timestamps are treated as East Africa Time.
-   * We convert the time to UTC before storing it in Supabase.
+   * Convert the time to UTC before storing it in Supabase.
    */
   const utcMilliseconds = Date.UTC(
     year,
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
     const body = await request.json();
 
     /*
-     * Expected callback structure:
+     * Expected Safaricom callback structure:
      *
      * {
      *   Body: {
@@ -80,7 +80,7 @@ export async function POST(request: Request) {
     const callback = body?.Body?.stkCallback;
 
     if (!callback) {
-      console.error("Invalid M-Pesa callback:", body);
+      console.error("Invalid M-Pesa callback received.");
 
       return NextResponse.json(
         {
@@ -107,8 +107,7 @@ export async function POST(request: Request) {
 
     if (!checkoutRequestId) {
       console.error(
-        "M-Pesa callback missing CheckoutRequestID:",
-        callback
+        "M-Pesa callback missing CheckoutRequestID."
       );
 
       return NextResponse.json(
@@ -120,16 +119,36 @@ export async function POST(request: Request) {
       );
     }
 
+    if (!Number.isFinite(resultCode)) {
+      console.error(
+        "M-Pesa callback contains an invalid ResultCode."
+      );
+
+      return NextResponse.json(
+        {
+          ResultCode: 1,
+          ResultDesc: "Invalid ResultCode.",
+        },
+        { status: 400 }
+      );
+    }
+
     const adminSupabase = createAdminClient();
 
     /*
      * Find the payment created when the STK Push was initiated.
+     *
+     * mpesa_amount_requested is the exact amount that our server
+     * sent to Safaricom:
+     *
+     * Sandbox    -> normally KSh 1
+     * Production -> actual requested academy payment amount
      */
     const { data: payment, error: paymentLookupError } =
       await adminSupabase
         .from("registration_payments")
         .select(
-          "id, status, amount_expected, checkout_request_id"
+          "id, status, amount_expected, mpesa_amount_requested, checkout_request_id, merchant_request_id"
         )
         .eq("checkout_request_id", checkoutRequestId)
         .maybeSingle();
@@ -150,27 +169,60 @@ export async function POST(request: Request) {
     }
 
     /*
-     * Safaricom may retry callbacks.
+     * If we don't know this CheckoutRequestID, do not modify
+     * any payment record.
      *
-     * If we already processed this successful transaction,
-     * acknowledge the callback without creating another payment.
+     * Acknowledge receipt so an unknown callback does not
+     * continuously retry against this endpoint.
      */
-    if (payment?.status === "Paid") {
+    if (!payment) {
+      console.error(
+        "No payment found for the supplied CheckoutRequestID."
+      );
+
+      return NextResponse.json({
+        ResultCode: 0,
+        ResultDesc: "Callback received.",
+      });
+    }
+
+    /*
+     * Safaricom may retry a callback.
+     *
+     * Once this payment has already been confirmed as Paid,
+     * never process a later callback in a way that could
+     * downgrade or modify the confirmed payment.
+     */
+    if (payment.status === "Paid") {
       return NextResponse.json({
         ResultCode: 0,
         ResultDesc: "Callback already processed.",
       });
     }
 
-    if (!payment) {
+    /*
+     * Validate MerchantRequestID when our payment record has one.
+     *
+     * The CheckoutRequestID remains the primary lookup key.
+     * MerchantRequestID gives us an additional consistency check
+     * against the identifiers returned when the STK Push started.
+     */
+    const storedMerchantRequestId =
+      typeof payment.merchant_request_id === "string"
+        ? payment.merchant_request_id.trim()
+        : "";
+
+    if (
+      storedMerchantRequestId &&
+      (!merchantRequestId ||
+        merchantRequestId !== storedMerchantRequestId)
+    ) {
       console.error(
-        "No payment found for CheckoutRequestID:",
-        checkoutRequestId
+        `M-Pesa callback MerchantRequestID mismatch for payment ${payment.id}.`
       );
 
       /*
-       * We acknowledge the callback so Safaricom does not
-       * continuously retry an unknown transaction.
+       * Do not change the payment status when identifiers conflict.
        */
       return NextResponse.json({
         ResultCode: 0,
@@ -179,8 +231,8 @@ export async function POST(request: Request) {
     }
 
     /*
-     * ResultCode 0 means the customer successfully completed
-     * the M-Pesa transaction.
+     * ResultCode 0 means Safaricom reports that the customer
+     * successfully completed the M-Pesa transaction.
      */
     if (resultCode === 0) {
       const metadata: CallbackItem[] = Array.isArray(
@@ -206,22 +258,22 @@ export async function POST(request: Request) {
         "TransactionDate"
       );
 
-      const amountPaid = Number(amountValue || 0);
+      const amountPaid = Number(amountValue);
 
       const mpesaReceiptNumber = receiptValue
-        ? String(receiptValue)
-        : null;
+        ? String(receiptValue).trim()
+        : "";
 
       const phoneNumber = phoneValue
-        ? String(phoneValue)
+        ? String(phoneValue).trim()
         : null;
 
       const transactionDate =
         parseMpesaTransactionDate(transactionDateValue);
 
       /*
-       * A successful callback must contain a real positive amount
-       * and an M-Pesa receipt number before we mark it as Paid.
+       * A successful callback must contain a positive numeric
+       * amount and an M-Pesa receipt number.
        */
       if (
         !Number.isFinite(amountPaid) ||
@@ -229,21 +281,62 @@ export async function POST(request: Request) {
         !mpesaReceiptNumber
       ) {
         console.error(
-          "Successful callback missing payment metadata:",
-          callback
+          `Successful callback missing required payment metadata for payment ${payment.id}.`
         );
 
-        await adminSupabase
-          .from("registration_payments")
-          .update({
-            status: "Failed",
-            result_code: resultCode,
-            result_description:
-              "Successful M-Pesa callback was missing required payment details.",
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", payment.id);
+        /*
+         * Do not mark this record Paid.
+         *
+         * We leave it Pending so it can still be reconciled using
+         * the STK Query route instead of turning a potentially valid
+         * transaction into a permanent failure because of malformed
+         * callback metadata.
+         */
+        return NextResponse.json({
+          ResultCode: 0,
+          ResultDesc: "Callback received.",
+        });
+      }
 
+      /*
+       * Verify that the amount Safaricom says was paid is exactly
+       * the amount our server requested from M-Pesa.
+       *
+       * We intentionally DO NOT compare against amount_expected.
+       * In Sandbox, amount_expected may be KSh 6,500 while the
+       * actual STK test request is only KSh 1.
+       */
+      const mpesaAmountRequested = Number(
+        payment.mpesa_amount_requested
+      );
+
+      if (
+        !Number.isFinite(mpesaAmountRequested) ||
+        mpesaAmountRequested <= 0
+      ) {
+        console.error(
+          `Payment ${payment.id} has no valid requested M-Pesa amount.`
+        );
+
+        /*
+         * Fail closed: without the original requested amount,
+         * this callback cannot safely confirm the payment.
+         */
+        return NextResponse.json({
+          ResultCode: 0,
+          ResultDesc: "Callback received.",
+        });
+      }
+
+      if (amountPaid !== mpesaAmountRequested) {
+        console.error(
+          `M-Pesa callback amount mismatch for payment ${payment.id}.`
+        );
+
+        /*
+         * Never mark the payment Paid when the amount does not
+         * match what our server originally sent to Safaricom.
+         */
         return NextResponse.json({
           ResultCode: 0,
           ResultDesc: "Callback received.",
@@ -267,7 +360,8 @@ export async function POST(request: Request) {
             transactionDate || new Date().toISOString(),
           updated_at: new Date().toISOString(),
         })
-        .eq("id", payment.id);
+        .eq("id", payment.id)
+        .neq("status", "Paid");
 
       if (updateError) {
         console.error(
@@ -298,27 +392,30 @@ export async function POST(request: Request) {
      * A non-zero ResultCode means the transaction did not
      * complete successfully.
      *
-     * Result code 1032 commonly represents a cancelled STK
-     * request, so we distinguish it from other failures.
+     * ResultCode 1032 commonly represents a cancelled STK request.
      */
     const finalStatus =
       resultCode === 1032 ? "Cancelled" : "Failed";
 
+    /*
+     * Only update a payment that has not already become Paid.
+     * This gives us another layer of protection against callback
+     * ordering or retry races.
+     */
     const { error: failedUpdateError } = await adminSupabase
       .from("registration_payments")
       .update({
         status: finalStatus,
         merchant_request_id:
           merchantRequestId || undefined,
-        result_code: Number.isFinite(resultCode)
-          ? resultCode
-          : null,
+        result_code: resultCode,
         result_description:
           resultDescription ||
           "M-Pesa payment was not completed.",
         updated_at: new Date().toISOString(),
       })
-      .eq("id", payment.id);
+      .eq("id", payment.id)
+      .neq("status", "Paid");
 
     if (failedUpdateError) {
       console.error(
